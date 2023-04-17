@@ -1,7 +1,9 @@
 import argparse
 import numpy as np
+import pandas as pd
 import torch
 import utils
+from utils import AverageMeterSet
 import prepare_data
 import models
 from sklearn.model_selection import KFold
@@ -35,6 +37,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default='test', help=" name of checkpoint model")
 
     args = parser.parse_args()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # load data
     meep_mimic = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_compile_0911_2022.npy', \
@@ -88,6 +91,52 @@ if __name__ == "__main__":
                                                                                             train_id=train_id,
                                                                                             dev_id=val_id,
                                                                                             test_id=test_id)
+        # df to record loss
+        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        for j in range(args.epochs):
+            model.train()
+            average_meters = AverageMeterSet()
+
+            for vitals, static, target, train_ids, key_mask in train_dataloader:
+                vitals = vitals.to(device)
+                static = static.to(device)
+                target = target.to(device)
+                key_mask = key_mask.to(device)
+
+                _, cost_dict = model(vitals, key_mask, target, static, "ffvae_train")
+
+                stats = dict((n, c.item()) for (n, c) in cost_dict.items())
+                average_meters.update_dict(stats)
+                
+            # print and record loss 
+
+            train_loss.loc[len(train_loss.index)] = cost_dict.values()
+            
+
+            model.eval()
+            average_meters = AverageMeterSet()
+            with torch.no_grad():
+                for vitals, static, target, train_ids, key_mask in dev_dataloader:
+                    vitals = vitals.to(device)
+                    static = static.to(device)
+                    target = target.to(device)
+                    key_mask = key_mask.to(device)
+
+                    _, cost_dict = model(vitals, key_mask, target, static, "test")
+                    dev_loss.loc[len(dev_loss.index)] = cost_dict.values()
+                
+            # print and record loss 
+        
+        # train the regression model
+        for j in range(args.epochs): 
+
+
+
+
+        
+        
 
 
 
