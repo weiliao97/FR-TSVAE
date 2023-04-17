@@ -92,9 +92,9 @@ if __name__ == "__main__":
                                                                                             dev_id=val_id,
                                                                                             test_id=test_id)
         # df to record loss
-        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        # train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        # dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         for j in range(args.epochs):
             model.train()
             average_meters = AverageMeterSet()
@@ -111,9 +111,7 @@ if __name__ == "__main__":
                 average_meters.update_dict(stats)
                 
             # print and record loss 
-
-            train_loss.loc[len(train_loss.index)] = cost_dict.values()
-            
+            print("EPOCH: ", j, "TRAIN AVGs: ", average_meters.averages())
 
             model.eval()
             average_meters = AverageMeterSet()
@@ -125,21 +123,47 @@ if __name__ == "__main__":
                     key_mask = key_mask.to(device)
 
                     _, cost_dict = model(vitals, key_mask, target, static, "test")
-                    dev_loss.loc[len(dev_loss.index)] = cost_dict.values()
+
+                    stats = dict((n, c.item()) for (n, c) in cost_dict.items())
+                    average_meters.update_dict(stats)
                 
             # print and record loss 
+            print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
         
         # train the regression model
         for j in range(args.epochs): 
 
+            model.train()
+            average_meters = AverageMeterSet()
 
+            for vitals, static, target, train_ids, key_mask in train_dataloader:
+                vitals = vitals.to(device)
+                static = static.to(device)
+                target = target.to(device)
+                key_mask = key_mask.to(device)
 
+                sofap, cost_dict = model(vitals, key_mask, target, static, "train")
 
-        
-        
+                stats = dict((n, c.item()) for (n, c) in cost_dict.items())
+                average_meters.update_dict(stats)
+                
+            # print and record loss 
+            print("EPOCH: ", j, "TRAIN AVGs: ", average_meters.averages())
 
+            model.eval()
+            average_meters = AverageMeterSet()
+            with torch.no_grad():
+                for vitals, static, target, train_ids, key_mask in dev_dataloader:
+                    vitals = vitals.to(device)
+                    static = static.to(device)
+                    target = target.to(device)
+                    key_mask = key_mask.to(device)
 
+                    _, cost_dict = model(vitals, key_mask, target, static, "test")
 
-
-
+                    stats = dict((n, c.item()) for (n, c) in cost_dict.items())
+                    average_meters.update_dict(stats)
+                
+            # print and record loss 
+            print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
 
