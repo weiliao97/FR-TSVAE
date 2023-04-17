@@ -88,8 +88,8 @@ class TemporalBlock(nn.Module):
 
     def forward(self, x):
         out = self.net(x)
-        res = x if self.downsample is None else self.downsample(x)
-        return self.relu(out + res)
+        # res = x if self.downsample is None else self.downsample(x)
+        return out
 
 
 class TemporalConv(nn.Module):
