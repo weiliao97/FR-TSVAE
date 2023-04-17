@@ -1,6 +1,11 @@
 import argparse
-import utils
 import numpy as np
+import torch
+import utils
+import prepare_data
+import models
+from sklearn.model_selection import KFold
+kf = KFold(n_splits=10, random_state=None, shuffle=False)
 
 
 if __name__ == "__main__":
@@ -25,7 +30,7 @@ if __name__ == "__main__":
     # training parameters
     parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs")
     parser.add_argument("--data_batching", type=str, default='close', choices=['same', 'close', 'random'], help='How to batch data')
-    parser.add_argument("--batch_size", type=int, default=16, help="batch size")
+    parser.add_argument("--bs", type=int, default=16, help="batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--checkpoint", type=str, default='test', help=" name of checkpoint model")
 
@@ -52,8 +57,37 @@ if __name__ == "__main__":
         test_head, test_static, test_sofa, test_id = utils.filter_sepsis(test_head, test_static, test_sofa, test_id)
 
     # build model
+    model = models.ffvae(args)
 
-    # train model
+    # 10-fold cross validation
+    trainval_head = train_head + dev_head
+    trainval_static = train_static + dev_static
+    trainval_stail = train_sofa + dev_sofa
+    trainval_ids = train_id + dev_id
+
+    # prepare data
+    for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
+        best_loss = 1e4
+        patience = 0
+        if c_fold >= 1:
+            model.load_state_dict(torch.load('/content/start_weights.pt'))
+        print('Starting Fold %d' % c_fold)
+        print("TRAIN:", len(train_index), "TEST:", len(test_index))
+        train_head, val_head = utils.slice_data(trainval_head, train_index), utils.slice_data(trainval_head, test_index)
+        train_static, val_static = utils.slice_data(trainval_static, train_index), utils.slice_data(trainval_static, test_index)
+        train_stail, val_stail = utils.slice_data(trainval_stail, train_index), utils.slice_data(trainval_stail, test_index)
+        train_id, val_id = utils.slice_data(trainval_ids, train_index), utils.slice_data(trainval_ids, test_index)
+
+        train_dataloader, dev_dataloader, test_dataloader = prepare_data.get_data_loader(args, train_head, val_head,
+                                                                                            test_head, 
+                                                                                            train_stail, val_stail,
+                                                                                            test_sofa,
+                                                                                            train_static=train_static,
+                                                                                            dev_static=dev_static,
+                                                                                            test_static=test_static,
+                                                                                            train_id=train_id,
+                                                                                            dev_id=val_id,
+                                                                                            test_id=test_id)
 
 
 
