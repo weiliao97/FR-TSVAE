@@ -1,4 +1,7 @@
 import argparse
+import utils
+import numpy as np
+
 
 if __name__ == "__main__":
 
@@ -39,14 +42,14 @@ if __name__ == "__main__":
     mimic_target = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_target_0922_2022.npy', \
                             allow_pickle=True).item()
         
-    train_head, train_static, train_sofa, train_id =  crop_data_target(train_vital, mimic_target, mimic_static, 'train')
-    dev_head, dev_static, dev_sofa, dev_id =  crop_data_target(dev_vital , mimic_target, mimic_static, 'dev')
-    test_head, test_static, test_sofa, test_id =  crop_data_target(test_vital, mimic_target, mimic_static, 'test')
+    train_head, train_static, train_sofa, train_id =  utils.crop_data_target(train_vital, mimic_target, mimic_static, 'train')
+    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target(dev_vital , mimic_target, mimic_static, 'dev')
+    test_head, test_static, test_sofa, test_id =  utils.crop_data_target(test_vital, mimic_target, mimic_static, 'test')
 
     if args.use_sepsis3 == True:
-        train_head, train_static, train_sofa, train_id = filter_sepsis(train_head, train_static, train_sofa, train_id)
-        dev_head, dev_static, dev_sofa, dev_id = filter_sepsis(dev_head, dev_static, dev_sofa, dev_id)
-        test_head, test_static, test_sofa, test_id = filter_sepsis(test_head, test_static, test_sofa, test_id)
+        train_head, train_static, train_sofa, train_id = utils.filter_sepsis(train_head, train_static, train_sofa, train_id)
+        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis(dev_head, dev_static, dev_sofa, dev_id)
+        test_head, test_static, test_sofa, test_id = utils.filter_sepsis(test_head, test_static, test_sofa, test_id)
 
     # build model
 
