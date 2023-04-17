@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
             for vitals, static, target, train_ids, key_mask in train_dataloader:
                 vitals = vitals.to(device)
-                static = static.to(device)
+                static = static[:, 0].to(device)
                 target = target.to(device)
                 key_mask = key_mask.to(device)
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for vitals, static, target, train_ids, key_mask in dev_dataloader:
                     vitals = vitals.to(device)
-                    static = static.to(device)
+                    static = static[:, 0].to(device)
                     target = target.to(device)
                     key_mask = key_mask.to(device)
 
@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
             for vitals, static, target, train_ids, key_mask in train_dataloader:
                 vitals = vitals.to(device)
-                static = static.to(device)
+                static = static[:, 0].to(device)
                 target = target.to(device)
                 key_mask = key_mask.to(device)
 
@@ -155,7 +155,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for vitals, static, target, train_ids, key_mask in dev_dataloader:
                     vitals = vitals.to(device)
-                    static = static.to(device)
+                    static = static[:, 0].to(device)
                     target = target.to(device)
                     key_mask = key_mask.to(device)
 
