@@ -231,15 +231,17 @@ class Ffvae(nn.Module):
         self.encoder  = TemporalConv(num_inputs=self.num_inputs, num_channels=self.enc_channels, kernel_size=self.kernel_size, dropout=self.drop_out)
         self.decoder = TemporalConvDec(num_inputs=self.zdim, num_channels=self.dec_channels, kernel_size=self.kernel_size, dropout=self.drop_out)
 
+        self.encoder.to(self.device)
+        self.decoder.to(self.device)
         # MLP Discriminator
         self.adv_neurons = [args.zdim] + [self.disc_channels] + [2]
-        self.discriminator = MLP(self.adv_neurons, args.zdim).to(args.device)
+        self.discriminator = MLP(self.adv_neurons, args.zdim).to(self.device)
 
         # MLP Classifier
         self.class_neurons = (
-            [args.zdim] + [self.regr_channels] + [args.num_classes]
+            [args.zdim] + [self.regr_channels] + [1]
         )
-        self.classifier = MLP(self.class_neurons, args.zdim).to(args.device)
+        self.classifier = MLP(self.class_neurons, args.zdim).to(self.device)
 
         # index for sensitive attribute
         self.n_sens = 1
@@ -300,7 +302,7 @@ class Ffvae(nn.Module):
         q_zIx = torch.distributions.Normal(mu, std)
 
         # the rest are 'b', deterministically modeled as logits of sens attrs a
-        
+        # (bs, 1, T)
         b_logits = _mu[:, self.sens_idx, :]
 
         # draw reparameterized sample and fill in the code
@@ -332,10 +334,10 @@ class Ffvae(nn.Module):
         elbo = recon_term - kl  
 
         # decode: get p(a|b)
-        # b logits shape torch.Size([bs, T]), converts to [bs] based on real length 
-        b_squeeze = torch.stack([b_logits[i][key_mask[i]==0].mean() for i in range(len(b_logits))])
+        # b logits shape torch.Size([bs, 1, T]), converts to [bs] based on real length 
+        b_squeeze = torch.stack([b_logits[i].squeeze(0)[key_mask[i]==0].mean() for i in range(len(b_logits))])
         clf_losses = [
-            nn.BCEWithLogitsLoss()(_b_logit, _a_sens)
+            nn.BCEWithLogitsLoss()(_b_logit.to(self.device), _a_sens.to(self.device))
             for _b_logit, _a_sens in zip(
             b_squeeze.t(), attrs.type(torch.FloatTensor).t())]
 
@@ -370,10 +372,10 @@ class Ffvae(nn.Module):
         disc_loss = (
         0.5
         * (
-            torch.stack([F.cross_entropy(logits_recover[i], torch.zeros(logits_recover[i].shape[0], dtype=torch.long))
+            torch.stack([F.cross_entropy(logits_recover[i], torch.zeros(logits_recover[i].shape[0], dtype=torch.long, device=self.device))
             for i in range(len(logits_recover))]).mean()
             + 
-            torch.stack([F.cross_entropy(logits_prime_recover[i], torch.zeros(logits_prime_recover[i].shape[0], dtype=torch.long)) 
+            torch.stack([F.cross_entropy(logits_prime_recover[i], torch.zeros(logits_prime_recover[i].shape[0], dtype=torch.long, device=self.device)) 
             for i in range(len(logits_prime_recover))]).mean()
         ).mean() )
 

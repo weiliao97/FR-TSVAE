@@ -22,8 +22,8 @@ if __name__ == "__main__":
     # model parameters
     parser.add_argument("--kernel_size", type=int, default=3, help="kernel size")
     parser.add_argument("--drop_out", type=float, default=0.2, help="drop out rate")
-    parser.add_argument("--enc_channels",  nargs='+', help="number of channels in the encoder")
-    parser.add_argument("--dec_channels",  nargs='+', help="number of channels in the decoder")
+    parser.add_argument("--enc_channels",  nargs='+', type=int, help="number of channels in the encoder")
+    parser.add_argument("--dec_channels",  nargs='+', type=int, help="number of channels in the decoder")
     parser.add_argument("--num_inputs", type=int, default=200, help="number of features in the inputs")
     # discriminator parameters
     parser.add_argument("--disc_channels",  type=int, default=200, help="number of channels in the discriminator")
@@ -50,17 +50,17 @@ if __name__ == "__main__":
     mimic_target = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_target_0922_2022.npy', \
                             allow_pickle=True).item()
         
-    train_head, train_static, train_sofa, train_id =  utils.crop_data_target(train_vital, mimic_target, mimic_static, 'train')
-    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target(dev_vital , mimic_target, mimic_static, 'dev')
-    test_head, test_static, test_sofa, test_id =  utils.crop_data_target(test_vital, mimic_target, mimic_static, 'test')
+    train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train')
+    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target('mimic', dev_vital , mimic_target, mimic_static, 'dev')
+    test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test')
 
     if args.use_sepsis3 == True:
-        train_head, train_static, train_sofa, train_id = utils.filter_sepsis(train_head, train_static, train_sofa, train_id)
-        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis(dev_head, dev_static, dev_sofa, dev_id)
-        test_head, test_static, test_sofa, test_id = utils.filter_sepsis(test_head, test_static, test_sofa, test_id)
+        train_head, train_static, train_sofa, train_id = utils.filter_sepsis('mimic', train_head, train_static, train_sofa, train_id)
+        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis('mimic', dev_head, dev_static, dev_sofa, dev_id)
+        test_head, test_static, test_sofa, test_id = utils.filter_sepsis('mimic', test_head, test_static, test_sofa, test_id)
 
     # build model
-    model = models.ffvae(args)
+    model = models.Ffvae(args)
 
     # 10-fold cross validation
     trainval_head = train_head + dev_head
@@ -69,6 +69,7 @@ if __name__ == "__main__":
     trainval_ids = train_id + dev_id
 
     # prepare data
+    torch.autograd.set_detect_anomaly(True)
     for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
         best_loss = 1e4
         patience = 0
