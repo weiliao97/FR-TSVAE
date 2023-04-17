@@ -391,7 +391,7 @@ class Ffvae(nn.Module):
         sofap_loss = torch.mean(torch.stack(loss))
 
         cost_dict = dict(
-            ffvae_cost=ffvae_loss, recon_cost=recon_term, kl_cost=kl, corr_term=total_corr, clf_term = clf_losses, disc_cost=disc_loss, main_cost=sofap_loss
+            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), disc_cost=disc_loss, main_cost=sofap_loss
         )
 
         # ffvae optimization
