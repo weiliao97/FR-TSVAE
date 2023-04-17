@@ -213,7 +213,7 @@ class Ffvae(nn.Module):
         self.gamma = args.gamma
         self.alpha = args.alpha
         self.zdim = args.zdim
-        self.device = args.device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.batch_size = args.batch_size
 
         self.kernel_size = args.kernel_size
