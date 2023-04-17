@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.utils import weight_norm
+mse_loss = nn.MSELoss()
 
 class MLP(nn.Module):
     def __init__(self, num_neurons, zdim, activ="leakyrelu"):
@@ -279,64 +281,74 @@ class Ffvae(nn.Module):
         optimizer_class = torch.optim.Adam(self.classifier_params())
         return optimizer_ffvae, optimizer_disc, optimizer_class
 
-    def forward(self, inputs, labels, attrs, mode="train"):
+    def forward(self, inputs, key_mask, labels, attrs, mode="train"):
         """Computes forward pass through encoder ,
             Computes backward pass on the target function"""
         # # Make inputs between 0, 1
         # x = (inputs + 1) / 2
 
         # encode: get q(z,b|x)
-        # (bs, 60), (bs, 60)
-        _mu, _logvar = self.encoder(inputs, "encode")
+        # (bs, z_dim, T)
+        _mu, _logvar = self.encoder(inputs)
 
         # only non-sensitive dims of latent code modeled as Gaussian
-        mu = _mu[:, self.nonsens_idx]
-        logvar = _logvar[:, self.nonsens_idx]
+        mu = _mu[:, self.nonsens_idx, :]
+        logvar = _logvar[:, self.nonsens_idx, :]
         zb = torch.zeros_like(_mu) 
+        # (bs, nonsens_dim, T)
         std = (logvar / 2).exp()
         q_zIx = torch.distributions.Normal(mu, std)
 
         # the rest are 'b', deterministically modeled as logits of sens attrs a
-        b_logits = _mu[:, self.sens_idx]
+        
+        b_logits = _mu[:, self.sens_idx, :]
 
         # draw reparameterized sample and fill in the code
+        # (bs, nonsens_dim, T)
         z = q_zIx.rsample()
         # reparametrization
-        zb[:, self.sens_idx] = b_logits
-        zb[:, self.nonsens_idx] = z
+        zb[:, self.sens_idx, :] = b_logits
+        zb[:, self.nonsens_idx, :] = z
 
         # decode: get p(x|z,b)
         # xIz_params = self.decoder(zb, "decode")  # decoder yields distn params not preds
     
-        # (16, 200, 216)
-        xIz_params = self.decoder(zb, "decode")
+        # (bs, z_dim, T) --> (bs, 200, T)
+        xIz_params = self.decoder(zb)
 
         p_xIz = torch.distributions.Normal(loc=xIz_params, scale=1.0)
         # negative recon error per example
         logp_xIz = p_xIz.log_prob(inputs)  
 
-        recon_term = logp_xIz.reshape(len(x), -1).sum(1)
+        # Tensor with shape torch.Size([bs]) 
+        recon_term = torch.stack([logp_xIz[i, :, key_mask[i] == 0].sum() for i in range(len(logp_xIz))])
 
         # prior: get p(z)
         p_z = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
-        # compute analytic KL from q(z|x) to p(z), then ELBO
-        kl = torch.distributions.kl_divergence(q_zIx, p_z).sum(1)
+        # compute analytic KL from q(z|x) to p(z), then ELBO, torch.Size([bs])
+        kl = torch.distributions.kl_divergence(q_zIx, p_z).sum((1, 2))
 
         # vector el
         elbo = recon_term - kl  
 
         # decode: get p(a|b)
+        # b logits shape torch.Size([bs, T]), converts to [bs] based on real length 
+        b_squeeze = torch.stack([b_logits[i][key_mask[i]==0].mean() for i in range(len(b_logits))])
         clf_losses = [
-            nn.BCEWithLogitsLoss()(_b_logit.to(self.device), _a_sens.to(self.device))
+            nn.BCEWithLogitsLoss()(_b_logit, _a_sens)
             for _b_logit, _a_sens in zip(
-                b_logits.squeeze().t(), attrs.type(torch.FloatTensor).t()
-            )
-        ]
+            b_squeeze.t(), attrs.type(torch.FloatTensor).t())]
 
         # compute loss
-        logits_joint, probs_joint = self.discriminator(zb, "discriminator")
-        total_corr = logits_joint[:, 0] - logits_joint[:, 1]
+        # (bs, T, 2)
+        logits_joint, probs_joint = self.discriminator(zb.transpose(1, 2), "discriminator")
+        # consider mask 
+        # [Tensor with shape torch.Size([T1, 2]), Tensor with shape torch.Size([T2, 2])
+        logits_recover = [logits_joint[i][key_mask[i]==0]for i in range(len(logits_joint))]
+        # torch.Size([bs])
+        total_corr = torch.stack([(l[:, 0] - l[:, 1]).mean() for l in logits_recover])
 
+        # random elbo 10^4, totoal_corr 10^-1, clf_losses 10^-2
         ffvae_loss = (
             -1.0 * elbo.mean()
             + self.gamma * total_corr.mean()
@@ -345,35 +357,39 @@ class Ffvae(nn.Module):
 
         # shuffling minibatch indexes of b0, b1, z
         z_fake = torch.zeros_like(zb)
-        z_fake[:, 0] = zb[:, 0][torch.randperm(zb.shape[0])]
-        z_fake[:, 1:] = zb[:, 1:][torch.randperm(zb.shape[0])]
+        z_fake[:, 0, :] = zb[:, 0, :][torch.randperm(zb.shape[0])]
+        z_fake[:, 1:, :] = zb[:, 1:, :][torch.randperm(zb.shape[0])]
         z_fake = z_fake.to(self.device).detach()
 
         # discriminator
         logits_joint_prime, probs_joint_prime = self.discriminator(
-            z_fake, "discriminator"
+            z_fake.transpose(1, 2), "discriminator"
         )
-        ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
-        zeros = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
+        logits_prime_recover = [logits_joint_prime[i][key_mask[i]==0]for i in range(len(logits_joint_prime))]
+        # 10^-1 torch.Size([])
         disc_loss = (
-            0.5
-            * (
-                F.cross_entropy(logits_joint, zeros)
-                + F.cross_entropy(logits_joint_prime, ones)
-            ).mean()
-        )
+        0.5
+        * (
+            torch.stack([F.cross_entropy(logits_recover[i], torch.zeros(logits_recover[i].shape[0], dtype=torch.long))
+            for i in range(len(logits_recover))]).mean()
+            + 
+            torch.stack([F.cross_entropy(logits_prime_recover[i], torch.zeros(logits_prime_recover[i].shape[0], dtype=torch.long)) 
+            for i in range(len(logits_prime_recover))]).mean()
+        ).mean() )
 
         encoded_x = _mu.detach()
 
         # IMPORTANT: randomizing sensitive latent
-        encoded_x[:, 0] = torch.randn_like(encoded_x[:, 0])
+        encoded_x[:, 0, :] = torch.randn_like(encoded_x[:, 0, :])
 
-        pre_softmax = self.classifier(encoded_x, "classify")
-        logprobs = F.log_softmax(pre_softmax, dim=1)
-        class_loss = F.nll_loss(logprobs, labels)
+        # torch.Size([bs, T, 1])
+        sofa_p= self.classifier(encoded_x.transpose(1, 2), "classify")
+        loss = [mse_loss(sofa_p[i][key_mask[i]==0], labels[i][key_mask[i]==0]) \
+            for i in range(len(sofa_p))]
+        sofap_loss = torch.mean(torch.stack(loss))
 
         cost_dict = dict(
-            ffvae_cost=ffvae_loss, disc_cost=disc_loss, main_cost=class_loss
+            ffvae_cost=ffvae_loss, disc_cost=disc_loss, main_cost=sofap_loss
         )
 
         # ffvae optimization
@@ -391,8 +407,8 @@ class Ffvae(nn.Module):
         # classifier optimization
         elif mode == "train":
             self.optimizer_class.zero_grad()
-            class_loss.backward()
+            sofap_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.classifier_params(), 5.0)
             self.optimizer_class.step()
 
-        return pre_softmax, cost_dict
+        return sofa_p, cost_dict
