@@ -387,7 +387,7 @@ class Ffvae(nn.Module):
         sofa_p= self.classifier(encoded_x, "classify")
         # labels (bs, T, 1), labels_avg (bs, 1)
         labels_avg = torch.stack([labels[i][key_mask[i] == 0].mean() for i in range(len(labels))]).reshape(-1, 1)
-        sofap_loss = F.mse_loss(sofa_p, labels)
+        sofap_loss = F.mse_loss(sofa_p, labels_avg)
 
         cost_dict = dict(
             ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), disc_cost=disc_loss, main_cost=sofap_loss
