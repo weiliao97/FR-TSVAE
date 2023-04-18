@@ -107,7 +107,7 @@ def col_fn(batchdata):
     seq_len = [batchdata[i][0].shape[-1] for i in range(len_data)]
     # [(48, ), (28, ), (100, )....]
     len_tem = [np.zeros((batchdata[i][0].shape[-1])) for i in range(len_data)]
-    max_len = max(seq_len)
+    max_len = 216
 
     # [(200, 48) ---> (200, 100)]
     padded_td = [np.pad(batchdata[i][0], pad_width=((0, 0), (0, max_len-batchdata[i][0].shape[-1])), \
