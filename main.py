@@ -53,7 +53,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     arg_dict = vars(args)
     workname = date + "_" +  args.checkpoint
-    utils.creat_checkpoint_folder('./checkpoints/' + workname, 'params.json', arg_dict)
+    utils.creat_checkpoint_folder('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'params.json', arg_dict)
 
     # load data
     meep_mimic = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_compile_0911_2022.npy', \
@@ -152,14 +152,14 @@ if __name__ == "__main__":
         # save pd df, show plot, save plot
         plt.figure()
         axs = train_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('./checkpoints/' + workname + '/train_loss_fold%d.eps'%j, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_loss_fold%d.eps'%j, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.figure()
         axs = dev_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('./checkpoints/' + workname + '/dev_loss_fold%d.eps'%j, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_loss_fold%d.eps'%j, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.show()
-        with open(os.path.join('./checkpoints/' + workname, 'train_loss_fold%d.pkl'%j), 'wb') as f:
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_loss_fold%d.pkl'%j), 'wb') as f:
             pickle.dump(train_loss, f)
-        with open(os.path.join('./checkpoints/' + workname, 'val_loss_fold%d.pkl'%j), 'wb') as f:
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%j), 'wb') as f:
             pickle.dump(dev_loss, f)
 
         # train the regression model
