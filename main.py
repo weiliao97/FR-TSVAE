@@ -8,6 +8,16 @@ import prepare_data
 import models
 from sklearn.model_selection import KFold
 kf = KFold(n_splits=10, random_state=None, shuffle=False)
+from datetime import date
+today = date.today()
+date = today.strftime("%m%d")
+import matplotlib.pyplot as plt
+import matplotlib 
+matplotlib.rcParams["figure.dpi"] = 300
+plt.style.use('bmh')
+plt.rcParams["font.weight"] = "bold"
+plt.rcParams["axes.labelweight"] = "bold"
+legend_properties = {'weight':'bold', 'size': 14}
 
 
 if __name__ == "__main__":
@@ -39,6 +49,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    arg_dict = var(args)
+    workname = date + "_" +  args.checkpoint
+    utils.creat_checkpoint_folder('./checkpoints/' + workname, 'params.json', arg_dict)
 
     # load data
     meep_mimic = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_compile_0911_2022.npy', \
@@ -94,8 +107,8 @@ if __name__ == "__main__":
                                                                                             dev_id=val_id,
                                                                                             test_id=test_id)
         # df to record loss
-        # train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        # dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         for j in range(args.epochs):
             model.train()
@@ -113,6 +126,7 @@ if __name__ == "__main__":
                 average_meters.update_dict(stats)
                 
             # print and record loss 
+            train_loss.loc[len(train_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "TRAIN AVGs: ", average_meters.averages())
 
             model.eval()
@@ -130,8 +144,18 @@ if __name__ == "__main__":
                     average_meters.update_dict(stats)
                 
             # print and record loss 
+            dev_loss.loc[len(dev_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
         
+        # save pd df, show plot, save plot
+        plt.figure()
+        axs = train_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig(workname + 'train_loss.eps', format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.figure()
+        axs = dev_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig(workname + 'dev_loss.eps', format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.show()
+
         # train the regression model
         for j in range(args.epochs): 
 
