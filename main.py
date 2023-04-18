@@ -9,7 +9,7 @@ from utils import AverageMeterSet
 import prepare_data
 import models
 from sklearn.model_selection import KFold
-kf = KFold(n_splits=5, random_state=42, shuffle=False)
+kf = KFold(n_splits=5, random_state=None, shuffle=False)
 from datetime import date
 today = date.today()
 date = today.strftime("%m%d")
