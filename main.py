@@ -16,6 +16,7 @@ if __name__ == "__main__":
     # data/loss parameters
     parser.add_argument("--use_sepsis3", action = 'store_false', default= True, help="Whethe only use sepsis3 subset")
     parser.add_argument("--bucket_size", type=int, default=300, help="bucket size to group different length of time-series data")
+    parser.add_argument("--beta", type=float, default=0.0001, help="coefficent for the elbo loss")
     parser.add_argument("--gamma", type=float, default=0.5, help="coefficent for the total_corr loss")
     parser.add_argument("--alpha", type=float, default=0.5, help="coefficent for the clf loss")
     parser.add_argument("--zdim", type=int, default=20, help="dimension of the latent space")

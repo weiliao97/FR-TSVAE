@@ -210,6 +210,7 @@ class Ffvae(nn.Module):
     def __init__(self, args):
         super(Ffvae, self).__init__()
 
+        self.beta = args.beta
         self.gamma = args.gamma
         self.alpha = args.alpha
         self.zdim = args.zdim
@@ -352,7 +353,7 @@ class Ffvae(nn.Module):
 
         # random elbo 10^4, totoal_corr 10^-1, clf_losses 10^-2
         ffvae_loss = (
-            -1.0 * elbo.mean()
+            - self.beta * elbo.mean()
             + self.gamma * total_corr.mean()
             + self.alpha * torch.stack(clf_losses).mean()
         )
