@@ -367,8 +367,8 @@ class Ffvae(nn.Module):
             z_fake, "discriminator"
         )
         # 10^-1 torch.Size([])
-        ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
-        zeros = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
+        ones = torch.ones(inputs.shape[0], dtype=torch.long, device=self.device)
+        zeros = torch.zeros(inputs.shape[0], dtype=torch.long, device=self.device)
         disc_loss = (
             0.5
             * (
