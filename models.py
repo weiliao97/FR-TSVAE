@@ -123,7 +123,7 @@ class TemporalConv(nn.Module):
         x = torch.flatten(x, start_dim=1, end_dim=2)
         x = self.linear(x)
         mu_dim = x.shape[1]//2
-        return x[:, :mu_dim, :], x[:, mu_dim:, :]
+        return x[:, :mu_dim], x[:, mu_dim:]
 
 class Add1d(nn.Module):
     """
