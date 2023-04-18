@@ -1,4 +1,5 @@
 import argparse
+import pickle
 import numpy as np
 import pandas as pd
 import torch
@@ -155,6 +156,10 @@ if __name__ == "__main__":
         axs = dev_loss.plot(figsize=(12, 14), subplots=True)
         plt.savefig(workname + 'dev_loss.eps', format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.show()
+        with open(os.path.join(workname, 'train_loss.pkl'), 'wb') as f:
+            pickle.dump(train_loss, f)
+        with open(os.path.join(workname, 'val_loss.pkl'), 'wb') as f:
+            pickle.dump(dev_loss, f)
 
         # train the regression model
         for j in range(args.epochs): 
