@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    arg_dict = var(args)
+    arg_dict = vars(args)
     workname = date + "_" +  args.checkpoint
     utils.creat_checkpoint_folder('./checkpoints/' + workname, 'params.json', arg_dict)
 
