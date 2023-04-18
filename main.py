@@ -7,7 +7,7 @@ from utils import AverageMeterSet
 import prepare_data
 import models
 from sklearn.model_selection import KFold
-kf = KFold(n_splits=10, random_state=None, shuffle=False)
+kf = KFold(n_splits=5, random_state=None, shuffle=False)
 from datetime import date
 today = date.today()
 date = today.strftime("%m%d")
@@ -87,8 +87,8 @@ if __name__ == "__main__":
     for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
         best_loss = 1e4
         patience = 0
-        if c_fold >= 1:
-            model.load_state_dict(torch.load('/content/start_weights.pt'))
+        # if c_fold >= 1:
+        #     model.load_state_dict(torch.load('/content/start_weights.pt'))
         print('Starting Fold %d' % c_fold)
         print("TRAIN:", len(train_index), "TEST:", len(test_index))
         train_head, val_head = utils.slice_data(trainval_head, train_index), utils.slice_data(trainval_head, test_index)
