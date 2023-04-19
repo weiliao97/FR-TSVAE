@@ -1,5 +1,6 @@
 import argparse
 import os 
+import copy 
 import pickle
 import numpy as np
 import pandas as pd
@@ -47,6 +48,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_batching", type=str, default='close', choices=['same', 'close', 'random'], help='How to batch data')
     parser.add_argument("--bs", type=int, default=16, help="batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--patience", type=int, default=20, help="Patience epochs for early stopping.")
     parser.add_argument("--checkpoint", type=str, default='test', help=" name of checkpoint model")
 
     args = parser.parse_args()
@@ -87,8 +89,7 @@ if __name__ == "__main__":
     # prepare data
     torch.autograd.set_detect_anomaly(True)
     for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
-        best_loss = 1e4
-        patience = 0
+        
         # if c_fold >= 1:
         #     model.load_state_dict(torch.load('/content/start_weights.pt'))
         print('Starting Fold %d' % c_fold)
@@ -112,6 +113,8 @@ if __name__ == "__main__":
         train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        best_loss = 1e4
+        patience = 0
         for j in range(args.epochs):
             model.train()
             average_meters = AverageMeterSet()
@@ -148,6 +151,17 @@ if __name__ == "__main__":
             # print and record loss 
             dev_loss.loc[len(dev_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
+
+        if average_meters.averages()['ffvae_cost/avg'] < best_loss:
+            patience = 0 
+            best_loss = average_meters.averages()['ffvae_cost/avg']
+            best_model_state = copy.deepcopy(model.state_dict())
+        else:
+            patience += 1 
+            if patience >= args.patience:
+                print("Epoch %d :"%j, "Early stopped.")
+            torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/stage1_epoch%d.pt'%j)
+            break 
         
         # save pd df, show plot, save plot
         plt.figure()
@@ -164,6 +178,8 @@ if __name__ == "__main__":
 
         train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        best_loss = 1e4
+        patience = 0
         # train the regression model
         for j in range(args.epochs): 
 
@@ -202,6 +218,17 @@ if __name__ == "__main__":
             # print and record loss 
             dev_regr_loss.loc[len(dev_regr_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
+
+            if average_meters.averages()['main_cost/avg'] < best_loss:
+                patience = 0 
+                best_loss = average_meters.averages()['main_cost/avg']
+                best_model_state = copy.deepcopy(model.state_dict())
+            else:
+                patience += 1 
+                if patience >= args.patience:
+                    print("Epoch %d :"%j, "Early stopped.")
+                torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/stage2_epoch%d.pt'%j)
+                break 
         
         # save pd df, show plot, save plot
         plt.figure()

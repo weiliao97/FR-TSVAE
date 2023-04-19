@@ -210,6 +210,7 @@ class Ffvae(nn.Module):
     def __init__(self, args):
         super(Ffvae, self).__init__()
 
+        self.lr = args.lr
         self.beta = args.beta
         self.gamma = args.gamma
         self.alpha = args.alpha
@@ -279,9 +280,9 @@ class Ffvae(nn.Module):
 
     def get_optimizer(self):
         """Returns an optimizer for each network"""
-        optimizer_ffvae = torch.optim.Adam(self.vae_params())
-        optimizer_disc = torch.optim.Adam(self.discriminator_params())
-        optimizer_class = torch.optim.Adam(self.classifier_params())
+        optimizer_ffvae = torch.optim.Adam(self.vae_params(), lr=self.lr)
+        optimizer_disc = torch.optim.Adam(self.discriminator_params(), lr=self.lr)
+        optimizer_class = torch.optim.Adam(self.classifier_params(),  lr=self.lr)
         return optimizer_ffvae, optimizer_disc, optimizer_class
 
     def forward(self, inputs, key_mask, labels, attrs, mode="train"):
