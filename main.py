@@ -162,6 +162,8 @@ if __name__ == "__main__":
         with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_loss, f)
 
+        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         # train the regression model
         for j in range(args.epochs): 
 
@@ -180,6 +182,7 @@ if __name__ == "__main__":
                 average_meters.update_dict(stats)
                 
             # print and record loss 
+            train_regr_loss.loc[len(train_regr_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "TRAIN AVGs: ", average_meters.averages())
 
             model.eval()
@@ -197,5 +200,20 @@ if __name__ == "__main__":
                     average_meters.update_dict(stats)
                 
             # print and record loss 
+            dev_regr_loss.loc[len(dev_regr_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
+        
+        # save pd df, show plot, save plot
+        plt.figure()
+        axs = train_regr_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.figure()
+        axs = dev_regr_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.show()
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
+            pickle.dump(train_regr_loss, f)
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
+            pickle.dump(dev_regr_loss, f)
+
 
