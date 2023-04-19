@@ -152,14 +152,14 @@ if __name__ == "__main__":
         # save pd df, show plot, save plot
         plt.figure()
         axs = train_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_loss_fold%d.eps'%j, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.figure()
         axs = dev_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_loss_fold%d.eps'%j, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.show()
-        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_loss_fold%d.pkl'%j), 'wb') as f:
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(train_loss, f)
-        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%j), 'wb') as f:
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_loss, f)
 
         # train the regression model
