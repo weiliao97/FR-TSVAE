@@ -160,8 +160,8 @@ if __name__ == "__main__":
             patience += 1 
             if patience >= args.patience:
                 print("Epoch %d :"%j, "Early stopped.")
-            torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/stage1_epoch%d.pt'%j)
-            break 
+                torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
+                break 
         
         # save pd df, show plot, save plot
         plt.figure()
@@ -227,8 +227,8 @@ if __name__ == "__main__":
                 patience += 1 
                 if patience >= args.patience:
                     print("Epoch %d :"%j, "Early stopped.")
-                torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/stage2_epoch%d.pt'%j)
-                break 
+                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage2_epoch%d.pt'%j)
+                    break 
         
         # save pd df, show plot, save plot
         plt.figure()
