@@ -114,6 +114,7 @@ if __name__ == "__main__":
         dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e4
+        best_clf_loss = 1e4 
         patience = 0
         for j in range(args.epochs):
             model.train()
@@ -152,17 +153,23 @@ if __name__ == "__main__":
             dev_loss.loc[len(dev_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
 
-        if average_meters.averages()['ffvae_cost/avg'] < best_loss:
-            patience = 0 
-            best_loss = average_meters.averages()['ffvae_cost/avg']
-            best_model_state = copy.deepcopy(model.state_dict())
-        else:
-            patience += 1 
-            if patience >= args.patience:
-                print("Epoch %d :"%j, "Early stopped.")
-                torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
-                break 
+            if average_meters.averages()['ffvae_cost/avg'] < best_loss:
+                patience = 0 
+                best_loss = average_meters.averages()['ffvae_cost/avg']
+                best_model_state = copy.deepcopy(model.state_dict())
+            else:
+                patience += 1 
+                if patience >= args.patience:
+                    print("Epoch %d :"%j, "Early stopped.")
+                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
+                    break 
+            if average_meters.averages()['clf_cost/avg'] < best_clf_loss: 
+                best_clf_loss = average_meters.averages()['clf_cost/avg']
+                best_clf_model = copy.deepcopy(model.state_dict())
         
+        torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
+        torch.save(best_clf_model, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_clf_epoch%d.pt'%j)
+    
         # save pd df, show plot, save plot
         plt.figure()
         axs = train_loss.plot(figsize=(12, 14), subplots=True)
@@ -180,6 +187,8 @@ if __name__ == "__main__":
         dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e4
         patience = 0
+        # train from best clf model
+        model.load_state_dict(torch.load('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/%s/stage1_clf_epoch%d.pt'%(workname, j)))
         # train the regression model
         for j in range(args.epochs): 
 
