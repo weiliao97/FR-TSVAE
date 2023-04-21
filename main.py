@@ -163,8 +163,8 @@ if __name__ == "__main__":
                     print("Epoch %d :"%j, "Early stopped.")
                     torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
                     break 
-            if average_meters.averages()['clf_cost/avg'] < best_clf_loss: 
-                best_clf_loss = average_meters.averages()['clf_cost/avg']
+            if average_meters.averages()['clf_term/avg'] < best_clf_loss: 
+                best_clf_loss = average_meters.averages()['clf_term/avg']
                 best_clf_model = copy.deepcopy(model.state_dict())
         
         torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
