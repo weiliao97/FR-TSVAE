@@ -231,22 +231,24 @@ def get_data_loader(args, train_head, dev_head, test_head,
         
     return train_dataloader, dev_dataloader, test_dataloader
 
-# def get_huge_dataloader(args, train_head, dev_head, test_head, \
-#                 train_sofa_tail, dev_sofa_tail, test_sofa_tail):
+def get_huge_dataloader(args, train_head, dev_head, test_head, \
+                train_sofa_tail, dev_sofa_tail, test_sofa_tail, 
+                train_static, dev_static, test_static, 
+                train_id, dev_id, test_id):
     
-#     total_head = train_head + dev_head + test_head
-#     total_target = np.concatenate((train_sofa_tail, dev_sofa_tail, test_sofa_tail), axis=0)
-#     train_len = [total_head[i].shape[1] for i in range(len(train_head))]
-#     # start_bin 
-#     bin_start = 0 
-#     len_range = [i for i in range(bin_start, 219+bin_start)]
-#     train_hist, _ = np.histogram(train_len, bins=len_range)
+    total_head = train_head + dev_head + test_head
+    total_target = np.concatenate((train_sofa_tail, dev_sofa_tail, test_sofa_tail), axis=0)
+    total_static = train_static + dev_static + test_static
+    total_id = train_id + dev_id + test_id
+    train_len = [total_head[i].shape[1] for i in range(len(train_head))]
+    len_range = [i for i in range(0, 219)]
+    train_hist, _ = np.histogram(train_len, bins=len_range)
     
-#     bucket_boundaries = generate_buckets(args.bucket_size, train_hist)
+    bucket_boundaries = generate_buckets(args.bucket_size, train_hist)
 
-#     train_dataset = Dataset(total_head, total_target)
-#     sampler = BySequenceLengthSampler(total_head, bucket_boundaries, args.bs)
-#     dataloader = data.DataLoader(train_dataset, batch_size=1, collate_fn=col_fn,
-#                                 batch_sampler=sampler, 
-#                                 drop_last=False, pin_memory=False)
-#     return dataloader
+    train_dataset = Dataset(total_head, total_target, static = total_static, stayid = total_id)
+    sampler = BySequenceLengthSampler(total_head, bucket_boundaries, args.bs)
+    dataloader = data.DataLoader(train_dataset, batch_size=1, collate_fn=col_fn,
+                                batch_sampler=sampler, 
+                                drop_last=False, pin_memory=False)
+    return dataloader
