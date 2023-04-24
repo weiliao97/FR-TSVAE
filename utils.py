@@ -74,35 +74,99 @@ def creat_checkpoint_folder(target_path, target_file, data):
             print(e)
             raise
     with open(os.path.join(target_path, target_file), 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f)  
 
-def crop_data_target(database, vital, target_dict, static_dict, mode):
-
+def crop_data_target(database, vital, target_dict, static_dict, mode, target_index):
+    '''
+    vital: a list of nd array [[200, 81], [200, 93], ...] 
+    target_dict: dict of SOFA score: {'train': {30015933: [81, 1], 30016009: [79, 1], ...}, 'dev': }
+    static_dict: dict of static variables: {'static_train': a DataFrame (27136, 27) , 'static_dev':}
+    variables in static dict: 'gender', 'age', 'hospital_expire_flag', 'max_hours',
+       'myocardial_infarct', 'congestive_heart_failure',
+       'peripheral_vascular_disease', 'cerebrovascular_disease', 'dementia',
+       'chronic_pulmonary_disease', 'rheumatic_disease',
+       'peptic_ulcer_disease', 'mild_liver_disease', 'diabetes_without_cc',
+       'diabetes_with_cc', 'paraplegia', 'renal_disease', 'malignant_cancer',
+       'severe_liver_disease', 'metastatic_solid_tumor', 'aids',
+       'ethnicity_AMERICAN INDIAN', 'ethnicity_ASIAN', 'ethnicity_BLACK',
+       'ethnicity_HISPANIC/LATINO', 'ethnicity_OTHER', 'ethnicity_WHITE'
+    return:
+    train_filter: [ndarray with shape (200, 8),...
+    sofa_tail: [ndarray with shape (8, 1),
+    stayids: [39412629, 37943756, 32581623, 37929132,
+    train_target: [0, 0, 1, 0, 0, 1]
+    '''
+    idx = pd.IndexSlice
     length = [i.shape[-1] for i in vital]
     all_train_id = list(target_dict[mode].keys())
-    stayids = [all_train_id[i] for i, m in enumerate(length) if m > 24]
-    sofa_tail = [target_dict[mode][j][24:] / 15 for j in stayids]
-    sname = 'static_' + mode
-    if database == 'mimic':
-        train_filter = [vital[i][:, :-24] for i, m in enumerate(length) if m > 24]
-        static_data = [static_dict[sname][static_dict[sname].index.get_level_values('stay_id') == j].values for j in
-                   stayids]
-    else:
-        train_filter = [vital[i][:, :-24] for i, m in enumerate(length) if m >24]
-        static_data = [static_dict[sname][static_dict[sname].index.get_level_values('patientunitstayid') == j].values for j in
-                   stayids]
-    # remove hospital mort flag and los
-    # squeese from (1, 25) to (25, )
-    static_data = [np.squeeze(np.concatenate((s[:, :2], s[:, 4:]), axis=1)) for s in static_data]
-    return train_filter, static_data, sofa_tail, stayids
+    stayids = [all_train_id[i] for i, m in enumerate(length) if m >24]
+    sofa_tail = [target_dict[mode][j][24:]/15 for j in stayids]
+    static_key = 'static_' + mode
 
-# def crop_data_target_eicu(vital, target_dict, mode):
-#     length = [i.shape[-1] for i in vital]
+    if database == 'mimic':
+        train_filter = [vital[i][:, :-24] for i, m in enumerate(length) if m >24]
+        if target_index == 21: # race: 2 is balck, 5 is white 
+            # shape [1,6] then use nonzero, after e.g.array([5])
+            train_target = [np.nonzero(static_dict[static_key].loc[idx[:, :, j]].iloc[:, 21:].values)[1] for j in stayids]
+            sub_ind = [i for i, m in enumerate(train_target) if m == 2 or m == 5]
+            race_dict = {2: 1, 5:0}
+            # a list of target class
+            train_targets = [race_dict[train_target[i][0]]for i in sub_ind]
+            train_filters = [train_filter[i] for i in sub_ind]
+            sofa_tails = [sofa_tail[i] for i in sub_ind]
+            stayidss = [stayids[i] for i in sub_ind]
+
+            return train_filters, train_targets, sofa_tails, stayidss
+
+        elif target_index == 1: # age, binarize it
+            # age median is 0.1097
+            train_target = [static_dict[static_key].loc[idx[:, :, j]].iloc[:, 1].values[0] for j in stayids]
+            train_target = [1 if i >= 0.1097 else 0 for i in train_target]
+            return train_filter, train_target, sofa_tail, stayids
+
+        else:
+            # a list of target class
+            train_target = [static_dict[static_key].loc[idx[:, :, j]].iloc[:, target_index].values[0] for j in stayids]
+            return train_filter, train_target, sofa_tail, stayids
     
-#     all_train_id = list(target_dict[mode].keys())
-#     stayids = [all_train_id[i] for i, m in enumerate(length) if m >24]
-#     sofa_tail = [target_dict[mode][j][24:]/15 for j in stayids ]
-#     return train_filter, sofa_tail, stayids
+    else: 
+        # for eicu eicu_static['static_train'].loc[141168][1] becomes a value 
+        if target_index == 21: # race: 2 is balck, 5 is white 
+            # shape [1,6] then use nonzero, after e.g.array([5])
+            train_target = [np.nonzero(static_dict[static_key].loc[j][21:].values)[0] for j in stayids]
+            sub_ind = [i for i, m in enumerate(train_target) if m == 2 or m == 5]
+            race_dict = {2: 1, 5:0}
+            # a list of target class
+            train_targets = [race_dict[train_target[i][0]]for i in sub_ind]
+            train_filters = [train_filter[i] for i in sub_ind]
+            sofa_tails = [sofa_tail[i] for i in sub_ind]
+            stayidss = [stayids[i] for i in sub_ind]
+
+            return train_filters, train_targets, sofa_tails, stayidss, 
+
+        elif target_index == 1: # age, binarize it
+            # age median is 0.1097
+            train_target = [static_dict[static_key].loc[j][1] for j in stayids]
+            train_target = [1 if i >= 0.1097 else 0 for i in train_target]
+
+            return train_filter, train_target, sofa_tail, stayids 
+
+        else:
+            # a list of target class
+            train_target = [static_dict[static_key].loc[j][target_index] for j in stayids]
+        
+        if target_index == 0: # eicu gender has unknown:
+            known_ids = [k for k, i in enumerate(stayids) if train_target[k] != 2.0]
+            train_filter = [train_filter[i] for i in known_ids]
+            sofa_tail = [sofa_tail[i] for i in known_ids]
+            stayids= [stayids[i] for i in known_ids]
+            train_target= [train_target[i] for i in known_ids]
+            
+            return train_filter, train_target, sofa_tail, stayids
+
+        return train_filter, train_target, sofa_tail, stayids
+    
+    # for eicu eicu_static['static_train'].loc[141168][1] becomes a value 
 
 def filter_sepsis(database, vital, static, sofa, ids): 
     if database == 'mimic':
