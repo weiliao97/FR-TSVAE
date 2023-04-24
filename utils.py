@@ -130,6 +130,7 @@ def crop_data_target(database, vital, target_dict, static_dict, mode, target_ind
             return train_filter, train_target, sofa_tail, stayids
     
     else: 
+        train_filter = [vital[i][:, :-24] for i, m in enumerate(length) if m >24]
         # for eicu eicu_static['static_train'].loc[141168][1] becomes a value 
         if target_index == 21: # race: 2 is balck, 5 is white 
             # shape [1,6] then use nonzero, after e.g.array([5])
