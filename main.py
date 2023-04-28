@@ -168,8 +168,8 @@ if __name__ == "__main__":
                 best_clf_loss = average_meters.averages()['clf_term/avg']
                 best_clf_model = copy.deepcopy(model.state_dict())
         
-        torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
-        torch.save(best_clf_model, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_clf_epoch%d.pt'%j)
+        torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_clf_model, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
     
         # save pd df, show plot, save plot
         plt.figure()
@@ -189,7 +189,7 @@ if __name__ == "__main__":
         best_loss = 1e4
         patience = 0
         # train from best clf model
-        model.load_state_dict(torch.load('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/%s/stage1_clf_epoch%d.pt'%(workname, j)))
+        model.load_state_dict(torch.load('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/%s/stage1_clf_fold_%d_epoch%d.pt'%(workname, c_fold, j)))
         # train the regression model
         for j in range(args.epochs): 
 
@@ -237,7 +237,7 @@ if __name__ == "__main__":
                 patience += 1 
                 if patience >= args.patience:
                     print("Epoch %d :"%j, "Early stopped.")
-                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage2_epoch%d.pt'%j)
+                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage2_fold_%d_epoch%d.pt'%(c_fold, j))
                     break 
         
         # save pd df, show plot, save plot
