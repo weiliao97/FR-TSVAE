@@ -197,7 +197,7 @@ def get_data_loader(args, train_head, dev_head, test_head,
         test_sampler = BySequenceLengthSampler(test_head, bucket_boundaries, test_batch_sizes)
 
         train_dataloader = data.DataLoader(train_dataset, batch_size=1, 
-                                batch_sampler=sampler, collate_fn=col_fn,
+                                batch_sampler=sampler, collate_n=col_fn,
                              drop_last=False, pin_memory=False)
         dev_dataloader = data.DataLoader(val_dataset, batch_size=1, 
                                 batch_sampler=dev_sampler, collate_fn=col_fn,

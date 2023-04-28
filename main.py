@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.5, help="coefficent for the total_corr loss")
     parser.add_argument("--alpha", type=float, default=0.5, help="coefficent for the clf loss")
     parser.add_argument("--zdim", type=int, default=20, help="dimension of the latent space")
+    parser.add_argument("--sens_ind", type=int, default=0, help="index of the sensitive feature")
     # model parameters
     parser.add_argument("--kernel_size", type=int, default=3, help="kernel size")
     parser.add_argument("--drop_out", type=float, default=0.2, help="drop out rate")
@@ -68,9 +69,9 @@ if __name__ == "__main__":
     mimic_target = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_target_0922_2022.npy', \
                             allow_pickle=True).item()
         
-    train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train')
-    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target('mimic', dev_vital , mimic_target, mimic_static, 'dev')
-    test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test')
+    train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train', args.sens_ind)
+    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target('mimic', dev_vital , mimic_target, mimic_static, 'dev',  args.sens_ind)
+    test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test',  args.sens_ind)
 
     if args.use_sepsis3 == True:
         train_head, train_static, train_sofa, train_id = utils.filter_sepsis('mimic', train_head, train_static, train_sofa, train_id)
@@ -122,7 +123,7 @@ if __name__ == "__main__":
 
             for vitals, static, target, train_ids, key_mask in train_dataloader:
                 vitals = vitals.to(device)
-                static = static[:, 0].to(device)
+                static = static.to(device)
                 target = target.to(device)
                 key_mask = key_mask.to(device)
 
@@ -140,7 +141,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for vitals, static, target, train_ids, key_mask in dev_dataloader:
                     vitals = vitals.to(device)
-                    static = static[:, 0].to(device)
+                    static = static.to(device)
                     target = target.to(device)
                     key_mask = key_mask.to(device)
 
@@ -197,7 +198,7 @@ if __name__ == "__main__":
 
             for vitals, static, target, train_ids, key_mask in train_dataloader:
                 vitals = vitals.to(device)
-                static = static[:, 0].to(device)
+                static = static.to(device)
                 target = target.to(device)
                 key_mask = key_mask.to(device)
 
@@ -215,7 +216,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for vitals, static, target, train_ids, key_mask in dev_dataloader:
                     vitals = vitals.to(device)
-                    static = static[:, 0].to(device)
+                    static = static.to(device)
                     target = target.to(device)
                     key_mask = key_mask.to(device)
 
