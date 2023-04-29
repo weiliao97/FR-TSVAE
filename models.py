@@ -333,6 +333,9 @@ class Ffvae(nn.Module):
 
         # vector el
         elbo = recon_term - kl  
+        if self.scale_elbo: 
+            # scale elbo by time axis
+            elbo = elbo / inputs.shape[-1]
 
         # decode: get p(a|b)
         # b logits shape torch.Size([bs, 1, T]), converts to [bs] based on real length 

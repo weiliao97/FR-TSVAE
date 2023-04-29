@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.5, help="coefficent for the total_corr loss")
     parser.add_argument("--alpha", type=float, default=0.5, help="coefficent for the clf loss")
     parser.add_argument("--zdim", type=int, default=20, help="dimension of the latent space")
+    parser.add_argument("--scale_elbo", action = 'store_true', help="Whether to scale the ELBO loss")
     # model parameters
     parser.add_argument("--kernel_size", type=int, default=3, help="kernel size")
     parser.add_argument("--drop_out", type=float, default=0.2, help="drop out rate")
