@@ -214,6 +214,7 @@ class Ffvae(nn.Module):
         self.alpha = args.alpha
         self.zdim = args.zdim
         self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.scale_elbo = args.scale_elbo
         self.batch_size = args.bs
 
         self.kernel_size = args.kernel_size
@@ -332,6 +333,10 @@ class Ffvae(nn.Module):
 
         # vector el
         elbo = recon_term - kl  
+
+        if self.scale_elbo: 
+            # scale elbo by time axis
+            elbo = elbo / inputs.shape[-1]
 
         # decode: get p(a|b)
         # b logits shape torch.Size([bs, 1, T]), converts to [bs] based on real length 
