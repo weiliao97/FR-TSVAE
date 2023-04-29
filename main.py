@@ -1,4 +1,7 @@
 import argparse
+import os 
+import copy 
+import pickle
 import numpy as np
 import pandas as pd
 import torch
@@ -7,7 +10,17 @@ from utils import AverageMeterSet
 import prepare_data
 import models
 from sklearn.model_selection import KFold
-kf = KFold(n_splits=10, random_state=None, shuffle=False)
+kf = KFold(n_splits=5, random_state=None, shuffle=False)
+from datetime import date
+today = date.today()
+date = today.strftime("%m%d")
+import matplotlib.pyplot as plt
+import matplotlib 
+matplotlib.rcParams["figure.dpi"] = 300
+plt.style.use('bmh')
+plt.rcParams["font.weight"] = "bold"
+plt.rcParams["axes.labelweight"] = "bold"
+legend_properties = {'weight':'bold', 'size': 14}
 
 
 if __name__ == "__main__":
@@ -20,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.5, help="coefficent for the total_corr loss")
     parser.add_argument("--alpha", type=float, default=0.5, help="coefficent for the clf loss")
     parser.add_argument("--zdim", type=int, default=20, help="dimension of the latent space")
+    parser.add_argument("--sens_ind", type=int, default=0, help="index of the sensitive feature")
     parser.add_argument("--scale_elbo", action = 'store_true', help="Whether to scale the ELBO loss")
     # model parameters
     parser.add_argument("--kernel_size", type=int, default=3, help="kernel size")
@@ -36,10 +50,14 @@ if __name__ == "__main__":
     parser.add_argument("--data_batching", type=str, default='close', choices=['same', 'close', 'random'], help='How to batch data')
     parser.add_argument("--bs", type=int, default=16, help="batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--patience", type=int, default=20, help="Patience epochs for early stopping.")
     parser.add_argument("--checkpoint", type=str, default='test', help=" name of checkpoint model")
 
     args = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    arg_dict = vars(args)
+    workname = date + "_" +  args.checkpoint
+    utils.creat_checkpoint_folder('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'params.json', arg_dict)
 
     # load data
     meep_mimic = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_compile_0911_2022.npy', \
@@ -52,9 +70,9 @@ if __name__ == "__main__":
     mimic_target = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_target_0922_2022.npy', \
                             allow_pickle=True).item()
         
-    train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train')
-    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target('mimic', dev_vital , mimic_target, mimic_static, 'dev')
-    test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test')
+    train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train', args.sens_ind)
+    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target('mimic', dev_vital , mimic_target, mimic_static, 'dev',  args.sens_ind)
+    test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test',  args.sens_ind)
 
     if args.use_sepsis3 == True:
         train_head, train_static, train_sofa, train_id = utils.filter_sepsis('mimic', train_head, train_static, train_sofa, train_id)
@@ -73,10 +91,10 @@ if __name__ == "__main__":
     # prepare data
     torch.autograd.set_detect_anomaly(True)
     for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
-        best_loss = 1e4
-        patience = 0
-        if c_fold >= 1:
-            model.load_state_dict(torch.load('/content/start_weights.pt'))
+        # best_loss = 1e4
+        # patience = 0
+        # if c_fold >= 1:
+        #     model.load_state_dict(torch.load('/content/start_weights.pt'))
         print('Starting Fold %d' % c_fold)
         print("TRAIN:", len(train_index), "TEST:", len(test_index))
         train_head, val_head = utils.slice_data(trainval_head, train_index), utils.slice_data(trainval_head, test_index)
@@ -89,22 +107,25 @@ if __name__ == "__main__":
                                                                                             train_stail, val_stail,
                                                                                             test_sofa,
                                                                                             train_static=train_static,
-                                                                                            dev_static=dev_static,
+                                                                                            dev_static=val_static,
                                                                                             test_static=test_static,
                                                                                             train_id=train_id,
                                                                                             dev_id=val_id,
                                                                                             test_id=test_id)
         # df to record loss
-        # train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        # dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        best_loss = 1e4
+        best_clf_loss = 1e4 
+        patience = 0
         for j in range(args.epochs):
             model.train()
             average_meters = AverageMeterSet()
 
             for vitals, static, target, train_ids, key_mask in train_dataloader:
                 vitals = vitals.to(device)
-                static = static[:, 0].to(device)
+                static = static.to(device)
                 target = target.to(device)
                 key_mask = key_mask.to(device)
 
@@ -114,6 +135,7 @@ if __name__ == "__main__":
                 average_meters.update_dict(stats)
                 
             # print and record loss 
+            train_loss.loc[len(train_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "TRAIN AVGs: ", average_meters.averages())
 
             model.eval()
@@ -121,7 +143,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for vitals, static, target, train_ids, key_mask in dev_dataloader:
                     vitals = vitals.to(device)
-                    static = static[:, 0].to(device)
+                    static = static.to(device)
                     target = target.to(device)
                     key_mask = key_mask.to(device)
 
@@ -131,7 +153,45 @@ if __name__ == "__main__":
                     average_meters.update_dict(stats)
                 
             # print and record loss 
+            dev_loss.loc[len(dev_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
+
+            if average_meters.averages()['ffvae_cost/avg'] < best_loss:
+                patience = 0 
+                best_loss = average_meters.averages()['ffvae_cost/avg']
+                best_model_state = copy.deepcopy(model.state_dict())
+            else:
+                patience += 1 
+                if patience >= args.patience:
+                    print("Epoch %d :"%j, "Early stopped.")
+                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
+                    break 
+            if average_meters.averages()['clf_term/avg'] < best_clf_loss: 
+                best_clf_loss = average_meters.averages()['clf_term/avg']
+                best_clf_model = copy.deepcopy(model.state_dict())
+
+        torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_clf_model, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
+
+        # save pd df, show plot, save plot
+        plt.figure()
+        axs = train_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.figure()
+        axs = dev_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.show()
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_loss_fold%d.pkl'%c_fold), 'wb') as f:
+            pickle.dump(train_loss, f)
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
+            pickle.dump(dev_loss, f)
+
+        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        best_loss = 1e4
+        patience = 0
+        # train from best clf model
+        model.load_state_dict(torch.load('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/%s/stage1_clf_fold_%d_epoch%d.pt'%(workname, c_fold, j)))
         
         # train the regression model
         for j in range(args.epochs): 
@@ -141,7 +201,7 @@ if __name__ == "__main__":
 
             for vitals, static, target, train_ids, key_mask in train_dataloader:
                 vitals = vitals.to(device)
-                static = static[:, 0].to(device)
+                static = static.to(device)
                 target = target.to(device)
                 key_mask = key_mask.to(device)
 
@@ -151,6 +211,7 @@ if __name__ == "__main__":
                 average_meters.update_dict(stats)
                 
             # print and record loss 
+            train_regr_loss.loc[len(train_regr_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "TRAIN AVGs: ", average_meters.averages())
 
             model.eval()
@@ -158,7 +219,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for vitals, static, target, train_ids, key_mask in dev_dataloader:
                     vitals = vitals.to(device)
-                    static = static[:, 0].to(device)
+                    static = static.to(device)
                     target = target.to(device)
                     key_mask = key_mask.to(device)
 
@@ -168,5 +229,30 @@ if __name__ == "__main__":
                     average_meters.update_dict(stats)
                 
             # print and record loss 
+            dev_regr_loss.loc[len(dev_regr_loss)] = average_meters.averages().values()
             print("EPOCH: ", j, "VAL AVGs: ", average_meters.averages())
+
+            if average_meters.averages()['main_cost/avg'] < best_loss:
+                patience = 0 
+                best_loss = average_meters.averages()['main_cost/avg']
+                best_model_state = copy.deepcopy(model.state_dict())
+            else:
+                patience += 1 
+                if patience >= args.patience:
+                    print("Epoch %d :"%j, "Early stopped.")
+                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage2_fold_%d_epoch%d.pt'%(c_fold, j))
+                    break 
+
+        # save pd df, show plot, save plot
+        plt.figure()
+        axs = train_regr_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.figure()
+        axs = dev_regr_loss.plot(figsize=(12, 14), subplots=True)
+        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.show()
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
+            pickle.dump(train_regr_loss, f)
+        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
+            pickle.dump(dev_regr_loss, f)
 

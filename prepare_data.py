@@ -33,6 +33,203 @@ class Dataset(data.Dataset):
     def __len__(self):
         return len(self.target)
 
+class RaceTrainSampler(Sampler):
+
+    def __init__(self, args, data_source, label, 
+                bucket_boundaries, batch_size=64):
+        ind_n_len = []
+        for i, p in enumerate(data_source):
+            ind_n_len.append( (i, p.shape[1]) )
+        self.ind_n_len = ind_n_len
+        self.bucket_boundaries = bucket_boundaries
+        self.batch_size = batch_size
+        self.label = label 
+        self.args = args
+
+
+    def __iter__(self):
+        data_buckets = dict()
+        # where p is the id number and seq_len is the length of this id number. 
+        for p, seq_len in self.ind_n_len:
+            pid = self.element_to_bucket_id(p,seq_len)
+            # each data bucket is a list of [0, 5, 6, 8, ...], [1, 3, 4....]
+            if pid in data_buckets.keys():
+                data_buckets[pid].append(p)
+            else:
+                data_buckets[pid] = [p]
+
+        for k in data_buckets.keys():
+            # if self.args.race_sample == 1: 
+            # # use class label 1 as the lower basis for white 
+            # #num of 1s which is black 
+            #     ind_pos =  np.asarray([i for i in data_buckets[k] if self.label[i] == 1 ])
+            #     num_pos= len(ind_pos)
+            #     # other is 0: asian and 2: hispanic
+            #     ind_other =  np.asarray([i for i in data_buckets[k] if self.label[i] == 0])
+            #     # 3 is white, which needs to be downsampled 
+            #     ind_neg =  [i for i in data_buckets[k] if self.label[i] == 2 ]
+            #     num_neg = min(max(1, num_pos), len(ind_neg))
+
+            #     neg_choice = np.random.choice(ind_neg, num_neg, replace=False)
+
+            #     data_buckets[k] = np.concatenate((ind_pos, neg_choice, ind_other))
+
+            # elif self.args.race_sample == 0:  # use class label 0 asian as the lower bound 
+                # after adjustment, 0 is black, 1 is white 
+                # ind_pos =  np.asarray([i for i in data_buckets[k] if self.label[i] == 1 ])
+
+                # other is 0: asian and 2: hispanic
+                # print(data_buckets)
+                # print(len(self.label))
+            ind_black =  np.asarray([i for i in data_buckets[k] if self.label[i] == 1])
+            num_black= len(ind_black)
+
+            # ind_hispanic =  np.asarray([i for i in data_buckets[k] if self.label[i] == 2])
+
+            # 2 is white, which needs to be downsampled 
+            # 1 is white, which needs to be downsampled 
+            ind_neg =  [i for i in data_buckets[k] if self.label[i] == 0 ]
+
+            num_neg = min(max(1, num_black), len(ind_neg)) # white
+            # num_pos = min(max(1, num_asian), len(ind_pos)) # black
+            # downsample bothe neg and pos 
+            neg_choice = np.random.choice(ind_neg, num_neg, replace=False)
+            # pos_choice = np.random.choice(ind_pos, num_pos, replace=False)
+
+            data_buckets[k] = np.concatenate((neg_choice, ind_black))
+
+        iter_list = []
+        for k in data_buckets.keys():
+            np.random.shuffle(data_buckets[k])
+            iter_list += (np.array_split(data_buckets[k]
+                           , int(data_buckets[k].shape[0]/self.batch_size)))
+        random.shuffle(iter_list) # shuffle all the batches so they arent ordered by bucket
+        # size
+        for i in iter_list: 
+            yield i.tolist() # as it was stored in an array
+
+    def __len__(self):
+        return len(self.data_source)
+
+    def element_to_bucket_id(self, x, seq_length):
+        boundaries = list(self.bucket_boundaries)
+        buckets_min = [np.iinfo(np.int32).min] + boundaries
+        buckets_max = boundaries + [np.iinfo(np.int32).max]
+        conditions_c = np.logical_and(
+          np.less_equal(buckets_min, seq_length),
+          np.less(seq_length, buckets_max))
+        bucket_id = np.min(np.where(conditions_c))
+        return bucket_id
+
+class TrainSampler(Sampler):
+
+    def __init__(self, data_source, label, 
+                bucket_boundaries, batch_size=64):
+        ind_n_len = []
+        for i, p in enumerate(data_source):
+            ind_n_len.append( (i, p.shape[1]) )
+        self.ind_n_len = ind_n_len
+        self.bucket_boundaries = bucket_boundaries
+        self.batch_size = batch_size
+        self.label = label 
+
+
+    def __iter__(self):
+        data_buckets = dict()
+        # where p is the id number and seq_len is the length of this id number. 
+        for p, seq_len in self.ind_n_len:
+            pid = self.element_to_bucket_id(p,seq_len)
+            # each data bucket is a list of [0, 5, 6, 8, ...], [1, 3, 4....]
+            if pid in data_buckets.keys():
+                data_buckets[pid].append(p)
+            else:
+                data_buckets[pid] = [p]
+
+        for k in data_buckets.keys():
+            #num of 1s
+            ind_pos =  np.asarray([i for i in data_buckets[k] if self.label[i] == 1 ])
+            num_pos= len(ind_pos)
+            ind_neg =  [i for i in data_buckets[k] if self.label[i] == 0 ]
+            num_neg = min(max(1, num_pos), len(ind_neg))
+            neg_choice = np.random.choice(ind_neg, num_neg, replace=False)
+            data_buckets[k] = np.concatenate((ind_pos, neg_choice))
+            # make sure there is equal number of 0s and 1s
+
+        iter_list = []
+        for k in data_buckets.keys():
+            np.random.shuffle(data_buckets[k])
+            iter_list += (np.array_split(data_buckets[k]
+                           , int(data_buckets[k].shape[0]/self.batch_size)))
+        random.shuffle(iter_list) # shuffle all the batches so they arent ordered by bucket
+        # size
+        for i in iter_list: 
+            yield i.tolist() # as it was stored in an array
+
+    def __len__(self):
+        return len(self.data_source)
+
+    def element_to_bucket_id(self, x, seq_length):
+        boundaries = list(self.bucket_boundaries)
+        buckets_min = [np.iinfo(np.int32).min] + boundaries
+        buckets_max = boundaries + [np.iinfo(np.int32).max]
+        conditions_c = np.logical_and(
+          np.less_equal(buckets_min, seq_length),
+          np.less(seq_length, buckets_max))
+        bucket_id = np.min(np.where(conditions_c))
+        return bucket_id
+
+# eval sampler doesn't need to resample negative class
+class EvalSampler(Sampler):
+
+    def __init__(self, data_source, label, 
+                bucket_boundaries, batch_size=64):
+        ind_n_len = []
+        for i, p in enumerate(data_source):
+            ind_n_len.append( (i, p.shape[1]) )
+        self.ind_n_len = ind_n_len
+        self.bucket_boundaries = bucket_boundaries
+        self.batch_size = batch_size
+        self.label = label 
+
+
+    def __iter__(self):
+        data_buckets = dict()
+        # where p is the id number and seq_len is the length of this id number. 
+        for p, seq_len in self.ind_n_len:
+            pid = self.element_to_bucket_id(p,seq_len)
+            # each data bucket is a list of [0, 5, 6, 8, ...], [1, 3, 4....]
+            if pid in data_buckets.keys():
+                data_buckets[pid].append(p)
+            else:
+                data_buckets[pid] = [p]
+
+        for k in data_buckets.keys():
+            data_buckets[k] = np.asarray(data_buckets[k])
+
+        iter_list = []
+        for k in data_buckets.keys():
+            np.random.shuffle(data_buckets[k])
+            iter_list += (np.array_split(data_buckets[k]
+                           , int(data_buckets[k].shape[0]/self.batch_size)))
+        random.shuffle(iter_list) # shuffle all the batches so they arent ordered by bucket
+        # size
+        for i in iter_list: 
+            yield i.tolist() # as it was stored in an array
+
+    def __len__(self):
+        return len(self.data_source)
+
+    def element_to_bucket_id(self, x, seq_length):
+        boundaries = list(self.bucket_boundaries)
+        buckets_min = [np.iinfo(np.int32).min] + boundaries
+        buckets_max = boundaries + [np.iinfo(np.int32).max]
+        conditions_c = np.logical_and(
+          np.less_equal(buckets_min, seq_length),
+          np.less(seq_length, buckets_max))
+        bucket_id = np.min(np.where(conditions_c))
+        return bucket_id
+    
+
 class BySequenceLengthSampler(Sampler):
     """ 
     A custom Sampler that yields a list of batch indices at a time 
@@ -215,9 +412,18 @@ def get_data_loader(args, train_head, dev_head, test_head,
 
         bucket_boundaries = generate_buckets(args.bucket_size, train_hist)
         
-        sampler = BySequenceLengthSampler(train_head, bucket_boundaries, batch_sizes)
-        dev_sampler = BySequenceLengthSampler(dev_head, bucket_boundaries, val_batch_sizes)
-        test_sampler = BySequenceLengthSampler(test_head, bucket_boundaries, test_batch_sizes)
+        if args.sens_ind == 1:
+            # ne need to resample if using age as a target
+            sampler = EvalSampler(train_head, train_static, bucket_boundaries, batch_sizes)
+        elif args.sens_ind == 21:
+            # if race as the target 
+            print(len(train_head))
+            sampler = RaceTrainSampler(args, train_head, train_static, bucket_boundaries, batch_sizes)
+        else:
+            sampler = TrainSampler(train_head, train_static, bucket_boundaries, batch_sizes)
+
+        dev_sampler = EvalSampler(dev_head, dev_static, bucket_boundaries, val_batch_sizes)
+        test_sampler = EvalSampler(test_head, test_static, bucket_boundaries, test_batch_sizes)
 
         train_dataloader = data.DataLoader(train_dataset, batch_size=1, collate_fn=col_fn,
                                 batch_sampler=sampler, 
