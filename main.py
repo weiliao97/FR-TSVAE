@@ -164,26 +164,26 @@ if __name__ == "__main__":
                 patience += 1 
                 if patience >= args.patience:
                     print("Epoch %d :"%j, "Early stopped.")
-                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
+                    torch.save(best_model_state, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage1_epoch%d.pt'%j)
                     break 
             if average_meters.averages()['clf_term/avg'] < best_clf_loss: 
                 best_clf_loss = average_meters.averages()['clf_term/avg']
                 best_clf_model = copy.deepcopy(model.state_dict())
 
-        torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
-        torch.save(best_clf_model, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_model_state, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_clf_model, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
 
         # save pd df, show plot, save plot
         plt.figure()
         axs = train_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/train_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.figure()
         axs = dev_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/dev_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.show()
-        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_loss_fold%d.pkl'%c_fold), 'wb') as f:
+        with open(os.path.join('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'train_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(train_loss, f)
-        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
+        with open(os.path.join('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_loss, f)
 
         train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         best_loss = 1e4
         patience = 0
         # train from best clf model
-        model.load_state_dict(torch.load('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/%s/stage1_clf_fold_%d_epoch%d.pt'%(workname, c_fold, j)))
+        model.load_state_dict(torch.load('/home/weiliao/FR-TSVAE/checkpoints/%s/stage1_clf_fold_%d_epoch%d.pt'%(workname, c_fold, j)))
         
         # train the regression model
         for j in range(args.epochs): 
@@ -240,19 +240,19 @@ if __name__ == "__main__":
                 patience += 1 
                 if patience >= args.patience:
                     print("Epoch %d :"%j, "Early stopped.")
-                    torch.save(best_model_state, '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/stage2_fold_%d_epoch%d.pt'%(c_fold, j))
+                    torch.save(best_model_state, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage2_fold_%d_epoch%d.pt'%(c_fold, j))
                     break 
 
         # save pd df, show plot, save plot
         plt.figure()
         axs = train_regr_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/train_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/train_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.figure()
         axs = dev_regr_loss.plot(figsize=(12, 14), subplots=True)
-        plt.savefig('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname + '/dev_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+        plt.savefig('/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/dev_regr_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
         plt.show()
-        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'train_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
+        with open(os.path.join('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'train_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(train_regr_loss, f)
-        with open(os.path.join('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'val_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
+        with open(os.path.join('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'val_regr_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_regr_loss, f)
 

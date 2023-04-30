@@ -180,7 +180,7 @@ def filter_sepsis(database, vital, static, sofa, ids):
         id_df = pd.read_csv('/nobackup/users/weiliao/mimic_sepsis3.csv')
         sepsis3_id = id_df['stay_id'].values  # 1d array
     else:
-        id_df = pd.read_csv('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/eicu_sepsis3.csv')
+        id_df = pd.read_csv('/nobackup/users/weiliao/eicu_sepsis3.csv')
         sepsis3_id = id_df['patientunitstayid'].values # 1d array 
     index_dict = dict((value, idx) for idx, value in enumerate(ids))
     ind = [index_dict[x] for x in sepsis3_id if x in index_dict.keys()]
