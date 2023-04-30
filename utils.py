@@ -177,7 +177,7 @@ def crop_data_target(database, vital, target_dict, static_dict, mode, target_ind
 
 def filter_sepsis(database, vital, static, sofa, ids): 
     if database == 'mimic':
-        id_df = pd.read_csv('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/mimic_sepsis3.csv')
+        id_df = pd.read_csv('/nobackup/users/weiliao/mimic_sepsis3.csv')
         sepsis3_id = id_df['stay_id'].values  # 1d array
     else:
         id_df = pd.read_csv('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/eicu_sepsis3.csv')
