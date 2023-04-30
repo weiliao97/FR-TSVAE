@@ -57,17 +57,17 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     arg_dict = vars(args)
     workname = date + "_" +  args.checkpoint
-    utils.creat_checkpoint_folder('/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE/checkpoints/' + workname, 'params.json', arg_dict)
+    utils.creat_checkpoint_folder('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'params.json', arg_dict)
 
     # load data
-    meep_mimic = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_compile_0911_2022.npy', \
+    meep_mimic = np.load('/nobackup/users/weiliao/MIMIC_compile_0911_2022.npy', \
                     allow_pickle=True).item()
     train_vital = meep_mimic ['train_head']
     dev_vital = meep_mimic ['dev_head']
     test_vital = meep_mimic ['test_head']
-    mimic_static = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_static_0922_2022.npy', \
+    mimic_static = np.load('/nobackup/users/weiliao/MIMIC_static_0922_2022.npy', \
                             allow_pickle=True).item()
-    mimic_target = np.load('/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910/MIMIC_target_0922_2022.npy', \
+    mimic_target = np.load('/nobackup/users/weiliao/MIMIC_target_0922_2022.npy', \
                             allow_pickle=True).item()
         
     train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train', args.sens_ind)
