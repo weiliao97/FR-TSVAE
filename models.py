@@ -379,10 +379,10 @@ class Ffvae(nn.Module):
         disc_loss = (
         0.5
         * (
-            torch.stack([F.cross_entropy(logits_joint[i], torch.zeros(logits_recover[i].shape[0], dtype=torch.long, device=self.device))
+            torch.stack([F.cross_entropy(logits_joint[i], torch.zeros(logits_joint[i].shape[0], dtype=torch.long, device=self.device))
             for i in range(len(logits_joint))]).mean()
             + 
-            torch.stack([F.cross_entropy(logits_joint_prime[i], torch.zeros(logits_prime_recover[i].shape[0], dtype=torch.long, device=self.device)) 
+            torch.stack([F.cross_entropy(logits_joint_prime[i], torch.zeros(logits_joint_prime[i].shape[0], dtype=torch.long, device=self.device)) 
             for i in range(len(logits_joint_prime))]).mean()
         ).mean() )
 
