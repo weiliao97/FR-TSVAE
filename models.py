@@ -341,7 +341,7 @@ class Ffvae(nn.Module):
 
         # decode: get p(a|b)
         # b logits shape torch.Size([bs, 1, T]), converts to [bs] based on real length 
-        b_squeeze = torch.stack([b_logits[i].squeeze(0)[key_mask[i]==0].mean() for i in range(len(b_logits))])
+        b_squeeze = torch.stack([b_logits[i].squeeze(0).mean() for i in range(len(b_logits))])
         clf_losses = [
             nn.BCEWithLogitsLoss()(_b_logit.to(self.device), _a_sens.to(self.device))
             for _b_logit, _a_sens in zip(
@@ -352,9 +352,9 @@ class Ffvae(nn.Module):
         logits_joint, probs_joint = self.discriminator(zb.transpose(1, 2), "discriminator")
         # consider mask 
         # [Tensor with shape torch.Size([T1, 2]), Tensor with shape torch.Size([T2, 2])
-        logits_recover = [logits_joint[i][key_mask[i]==0]for i in range(len(logits_joint))]
+#         logits_recover = [logits_joint[i][key_mask[i]==0]for i in range(len(logits_joint))]
         # torch.Size([bs])
-        total_corr = torch.stack([(l[:, 0] - l[:, 1]).mean() for l in logits_recover])
+        total_corr = torch.stack([(l[:, 0] - l[:, 1]).mean() for l in logits_joint])
 
         # random elbo 10^4, totoal_corr 10^-1, clf_losses 10^-2
         ffvae_loss = (
@@ -370,19 +370,20 @@ class Ffvae(nn.Module):
         z_fake = z_fake.to(self.device).detach()
 
         # discriminator
+#         (bs, T, 2 )
         logits_joint_prime, probs_joint_prime = self.discriminator(
             z_fake.transpose(1, 2), "discriminator"
         )
-        logits_prime_recover = [logits_joint_prime[i][key_mask[i]==0]for i in range(len(logits_joint_prime))]
+#         logits_prime_recover = [logits_joint_prime[i][key_mask[i]==0]for i in range(len(logits_joint_prime))]
         # 10^-1 torch.Size([])
         disc_loss = (
         0.5
         * (
-            torch.stack([F.cross_entropy(logits_recover[i], torch.zeros(logits_recover[i].shape[0], dtype=torch.long, device=self.device))
-            for i in range(len(logits_recover))]).mean()
+            torch.stack([F.cross_entropy(logits_joint[i], torch.zeros(logits_recover[i].shape[0], dtype=torch.long, device=self.device))
+            for i in range(len(logits_joint))]).mean()
             + 
-            torch.stack([F.cross_entropy(logits_prime_recover[i], torch.zeros(logits_prime_recover[i].shape[0], dtype=torch.long, device=self.device)) 
-            for i in range(len(logits_prime_recover))]).mean()
+            torch.stack([F.cross_entropy(logits_joint_prime[i], torch.zeros(logits_prime_recover[i].shape[0], dtype=torch.long, device=self.device)) 
+            for i in range(len(logits_joint_prime))]).mean()
         ).mean() )
 
         encoded_x = _mu.detach()
