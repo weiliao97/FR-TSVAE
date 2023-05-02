@@ -88,10 +88,39 @@ class TemporalBlock(nn.Module):
 
     def forward(self, x):
         out = self.net(x)
-        # res = x if self.downsample is None else self.downsample(x)
-        return out
+        res = x if self.downsample is None else self.downsample(x)
+        return self.relu(out + res)
 
+class TCN(nn.Module):
+    def __init__(self, num_inputs, num_channels=[256, 256, 256, 256], kernel_size=2, dropout=0.2):
+        super(TCN, self).__init__()
+        layers = []
+        num_levels = len(num_channels)
+        for i in range(num_levels):
+            dilation_size = 2 ** i
+            in_channels = num_inputs if i == 0 else num_channels[i-1]
+            out_channels = num_channels[i]
+            layers += [TemporalBlock(in_channels, out_channels, kernel_size, stride=1, dilation=dilation_size,
+                                     padding=(kernel_size-1) * dilation_size, dropout=dropout)]
 
+        self.network = nn.Sequential(*layers)
+        self.linear = nn.Sequential(
+        nn.Linear(num_channels[-1], 128),
+        nn.ReLU(),
+        nn.Dropout(0.2),
+        nn.Linear(128, 128),
+        nn.ReLU(),
+        nn.Dropout(0.2),
+        nn.Linear(128, 1)
+        )
+
+    def forward(self, x):
+        x = self.network(x)
+        x = x.contiguous().transpose(1, 2)
+        x = self.linear(x)
+        return x
+    
+    
 class TemporalConv(nn.Module):
     def __init__(self, num_inputs, num_channels=[256, 128, 64, 40], kernel_size=2, dropout=0.2):
         super(TemporalConv, self).__init__()
@@ -226,9 +255,9 @@ class Ffvae(nn.Module):
         self.num_inputs = args.num_inputs
 
         self.disc_channels = args.disc_channels
-        self.regr_channels = args.regr_channels
-
-
+        self.regr_channels = args.regr_channels if args.regr_model == 'mlp' else args.regr_tcn_channels
+        self.regr_model = args.regr_model 
+        
         # VAE encoder
 
         self.encoder  = TemporalConv(num_inputs=self.num_inputs, num_channels=self.enc_channels, kernel_size=self.kernel_size, dropout=self.drop_out)
@@ -241,10 +270,19 @@ class Ffvae(nn.Module):
         self.discriminator = MLP(self.adv_neurons, args.zdim).to(self.device)
 
         # MLP Classifier
-        self.class_neurons = (
-            [args.zdim] + [self.regr_channels] + [1]
-        )
-        self.classifier = MLP(self.class_neurons, args.zdim).to(self.device)
+        if args.regr_model == 'mlp':
+            self.class_neurons = (
+                [args.zdim] + [self.regr_channels] + [1]
+            )
+            self.classifier = MLP(self.class_neurons, args.zdim).to(self.device)
+            
+        elif args.regr_model == 'tcn':
+            
+            self.classifier = TCN(num_inputs=self.zdim, num_channels=self.regr_channels,
+                                        kernel_size=self.kernel_size, dropout=self.drop_out).to(self.device)
+        
+        else:
+            raise NotImplementedError("regr_model not implemented")
 
         # index for sensitive attribute
         self.n_sens = 1
@@ -382,7 +420,7 @@ class Ffvae(nn.Module):
             torch.stack([F.cross_entropy(logits_joint[i], torch.zeros(logits_joint[i].shape[0], dtype=torch.long, device=self.device))
             for i in range(len(logits_joint))]).mean()
             + 
-            torch.stack([F.cross_entropy(logits_joint_prime[i], torch.zeros(logits_joint_prime[i].shape[0], dtype=torch.long, device=self.device)) 
+            torch.stack([F.cross_entropy(logits_joint_prime[i], torch.ones(logits_joint_prime[i].shape[0], dtype=torch.long, device=self.device)) 
             for i in range(len(logits_joint_prime))]).mean()
         ).mean() )
 
@@ -392,7 +430,12 @@ class Ffvae(nn.Module):
         encoded_x[:, 0, :] = torch.randn_like(encoded_x[:, 0, :])
 
         # torch.Size([bs, T, 1])
-        sofa_p= self.classifier(encoded_x.transpose(1, 2), "classify")
+        if self.regr_model == 'mlp':
+            sofa_p = self.classifier(encoded_x.transpose(1, 2), "classify")
+        elif self.regr_model == 'tcn':
+            # encoder x (bs, z_dim, T) 
+            sofa_p =  self.classifier(encoded_x)
+            
         loss = [mse_loss(sofa_p[i][key_mask[i]==0], labels[i][key_mask[i]==0]) \
             for i in range(len(sofa_p))]
         sofap_loss = torch.mean(torch.stack(loss))

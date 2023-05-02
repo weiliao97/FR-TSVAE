@@ -44,7 +44,9 @@ if __name__ == "__main__":
     # discriminator parameters
     parser.add_argument("--disc_channels",  type=int, default=200, help="number of channels in the discriminator")
     # regressor parameters
+    parser.add_argument("--regr_model",  type=str, default='mlp', choices=['mlp', 'tcn'], help='Model choice in sofa prediction')
     parser.add_argument("--regr_channels",  type=int, default=200, help="number of channels in the regressor")
+    parser.add_argument("--regr_tcn_channels",  nargs='+', type=int, help="number of channels in the regressor")
     # training parameters
     parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs")
     parser.add_argument("--data_batching", type=str, default='close', choices=['same', 'close', 'random'], help='How to batch data')
