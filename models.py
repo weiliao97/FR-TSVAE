@@ -243,8 +243,9 @@ class Ffvae(nn.Module):
         self.beta = args.beta
         self.gamma = args.gamma
         self.alpha = args.alpha
+        self.theta = args.theta
         self.zdim = args.zdim
-        self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device =  torch.device("cuda:%d"%args.device_id if torch.cuda.is_available() else "cpu")
         self.scale_elbo = args.scale_elbo
         self.batch_size = args.bs
 
@@ -257,6 +258,7 @@ class Ffvae(nn.Module):
         self.disc_channels = args.disc_channels
         self.regr_channels = args.regr_channels if args.regr_model == 'mlp' else args.regr_tcn_channels
         self.regr_model = args.regr_model 
+        self.regr_only_nonsens = args.regr_only_nonsens
         
         # VAE encoder
 
@@ -268,12 +270,18 @@ class Ffvae(nn.Module):
         # MLP Discriminator
         self.adv_neurons = [args.zdim] + [self.disc_channels] + [2]
         self.discriminator = MLP(self.adv_neurons, args.zdim).to(self.device)
+        self.class_neurons = ([args.zdim] + [200] + [1])
+            
+        if self.regr_only_nonsens:
+            self.regr_neurons = ([args.zdim-1] + [200] + [1])
+            self.regr = MLP(self.regr_neurons, args.zdim).to(self.device)
+        else:
+            self.regr_neurons = ([args.zdim] + [200] + [1])
+            self.regr = MLP(self.regr_neurons, args.zdim).to(self.device)
 
         # MLP Classifier
         if args.regr_model == 'mlp':
-            self.class_neurons = (
-                [args.zdim] + [self.regr_channels] + [1]
-            )
+            
             self.classifier = MLP(self.class_neurons, args.zdim).to(self.device)
             
         elif args.regr_model == 'tcn':
@@ -316,10 +324,14 @@ class Ffvae(nn.Module):
     def classifier_params(self):
         """Returns classifier parameters"""
         return list(self.classifier.parameters())
+    
+    def regr_params(self):
+        """Returns regr parameters"""
+        return list(self.regr.parameters())
 
     def get_optimizer(self):
         """Returns an optimizer for each network"""
-        optimizer_ffvae = torch.optim.Adam(self.vae_params(), lr=self.lr)
+        optimizer_ffvae = torch.optim.Adam(self.vae_params() + self.regr_params(), lr=self.lr)
         optimizer_disc = torch.optim.Adam(self.discriminator_params(), lr=self.lr)
         optimizer_class = torch.optim.Adam(self.classifier_params(),  lr=self.lr)
         return optimizer_ffvae, optimizer_disc, optimizer_class
@@ -393,12 +405,22 @@ class Ffvae(nn.Module):
 #         logits_recover = [logits_joint[i][key_mask[i]==0]for i in range(len(logits_joint))]
         # torch.Size([bs])
         total_corr = torch.stack([(l[:, 0] - l[:, 1]).mean() for l in logits_joint])
+        
+        # add sofa loss classifier has to be tune as well 
+        if self.regr_only_nonsens:
+            sofa_p_s1 = self.regr(mu.transpose(1, 2), "classify")
+        else:
+            sofa_p_s1 = self.regr(_mu.transpose(1, 2), "classify")
+        sofa_loss = [mse_loss(sofa_p_s1[i][key_mask[i]==0], labels[i][key_mask[i]==0]) \
+            for i in range(len(sofa_p_s1))]
+#         regr_loss = torch.mean(torch.stack(sofa_loss))
 
         # random elbo 10^4, totoal_corr 10^-1, clf_losses 10^-2
         ffvae_loss = (
             - self.beta * elbo.mean()
             + self.gamma * total_corr.mean()
             + self.alpha * torch.stack(clf_losses).mean()
+            + self.theta * torch.stack(sofa_loss).mean()
         )
 
         # shuffling minibatch indexes of b0, b1, z
@@ -441,7 +463,7 @@ class Ffvae(nn.Module):
         sofap_loss = torch.mean(torch.stack(loss))
 
         cost_dict = dict(
-            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), disc_cost=disc_loss, main_cost=sofap_loss
+            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), sofa_term = torch.stack(sofa_loss).mean(), disc_cost=disc_loss, main_cost=sofap_loss
         )
 
         # ffvae optimization

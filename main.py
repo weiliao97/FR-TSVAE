@@ -26,12 +26,14 @@ legend_properties = {'weight':'bold', 'size': 14}
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Parser for time series VAE models")
+    parser.add_argument("--device_id", type=int, default=0, help="GPU id")
     # data/loss parameters
     parser.add_argument("--use_sepsis3", action = 'store_false', default= True, help="Whethe only use sepsis3 subset")
     parser.add_argument("--bucket_size", type=int, default=300, help="bucket size to group different length of time-series data")
     parser.add_argument("--beta", type=float, default=0.0001, help="coefficent for the elbo loss")
     parser.add_argument("--gamma", type=float, default=0.5, help="coefficent for the total_corr loss")
     parser.add_argument("--alpha", type=float, default=0.5, help="coefficent for the clf loss")
+    parser.add_argument("--theta", type=float, default=10, help="coefficent for the sofa loss in stage 1")
     parser.add_argument("--zdim", type=int, default=20, help="dimension of the latent space")
     parser.add_argument("--sens_ind", type=int, default=0, help="index of the sensitive feature")
     parser.add_argument("--scale_elbo", action = 'store_true', help="Whether to scale the ELBO loss")
@@ -47,6 +49,7 @@ if __name__ == "__main__":
     parser.add_argument("--regr_model",  type=str, default='mlp', choices=['mlp', 'tcn'], help='Model choice in sofa prediction')
     parser.add_argument("--regr_channels",  type=int, default=200, help="number of channels in the regressor")
     parser.add_argument("--regr_tcn_channels",  nargs='+', type=int, help="number of channels in the regressor")
+    parser.add_argument("--regr_only_nonsens", action = 'store_true', help="Whether only using nonsens latents to predict sofa")
     # training parameters
     parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs")
     parser.add_argument("--data_batching", type=str, default='close', choices=['same', 'close', 'random'], help='How to batch data')
@@ -56,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default='test', help=" name of checkpoint model")
 
     args = parser.parse_args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:%d"%args.device_id if torch.cuda.is_available() else "cpu")
     arg_dict = vars(args)
     workname = date + "_" +  args.checkpoint
     utils.creat_checkpoint_folder('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'params.json', arg_dict)
@@ -83,6 +86,7 @@ if __name__ == "__main__":
 
     # build model
     model = models.Ffvae(args)
+    torch.save(model.state_dict(), '/home/weiliao/FR-TSVAE/start_weights.pt')
 
     # 10-fold cross validation
     trainval_head = train_head + dev_head
@@ -95,8 +99,8 @@ if __name__ == "__main__":
     for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
         # best_loss = 1e4
         # patience = 0
-        # if c_fold >= 1:
-        #     model.load_state_dict(torch.load('/content/start_weights.pt'))
+        if c_fold >= 1:
+            model.load_state_dict(torch.load('/home/weiliao/FR-TSVAE/start_weights.pt'))
         print('Starting Fold %d' % c_fold)
         print("TRAIN:", len(train_index), "TEST:", len(test_index))
         train_head, val_head = utils.slice_data(trainval_head, train_index), utils.slice_data(trainval_head, test_index)
@@ -115,11 +119,12 @@ if __name__ == "__main__":
                                                                                             dev_id=val_id,
                                                                                             test_id=test_id)
         # df to record loss
-        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
+        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        best_loss = 1e4
+        best_loss = 1e5
         best_clf_loss = 1e4 
+        best_sofa_loss = 1e4
         patience = 0
         for j in range(args.epochs):
             model.train()
@@ -171,9 +176,14 @@ if __name__ == "__main__":
             if average_meters.averages()['clf_term/avg'] < best_clf_loss: 
                 best_clf_loss = average_meters.averages()['clf_term/avg']
                 best_clf_model = copy.deepcopy(model.state_dict())
+                
+            if average_meters.averages()['sofa_term/avg'] < best_sofa_loss: 
+                best_sofa_loss = average_meters.averages()['sofa_term/avg']
+                best_sofa_model = copy.deepcopy(model.state_dict())
 
         torch.save(best_model_state, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_clf_model, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_sofa_model, '/home/weiliao/FR-TSVAE/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
 
         # save pd df, show plot, save plot
         plt.figure()
@@ -188,8 +198,8 @@ if __name__ == "__main__":
         with open(os.path.join('/home/weiliao/FR-TSVAE/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_loss, f)
 
-        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
-        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
+        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term',  'disc_cost', 'sofap_loss'])
+        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e4
         patience = 0
         # train from best clf model
