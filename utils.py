@@ -2,6 +2,7 @@ import os
 import json 
 import numpy as np
 import pandas as pd
+dir_csv = {'satori': '/nobackup/users/weiliao', 'colab':'/content/drive/My Drive/ColabNotebooks/MIMIC/TCN'}
 
 class AverageMeterSet:
     """Computes average values of metrics"""
@@ -175,12 +176,12 @@ def crop_data_target(database, vital, target_dict, static_dict, mode, target_ind
 #     sofa_tail = [target_dict[mode][j][24:]/15 for j in stayids ]
 #     return train_filter, sofa_tail, stayids
 
-def filter_sepsis(database, vital, static, sofa, ids): 
+def filter_sepsis(database, vital, static, sofa, ids, plf): 
     if database == 'mimic':
-        id_df = pd.read_csv('/nobackup/users/weiliao/mimic_sepsis3.csv')
+        id_df = pd.read_csv(dir_csv[plf] + '/mimic_sepsis3.csv')
         sepsis3_id = id_df['stay_id'].values  # 1d array
     else:
-        id_df = pd.read_csv('/nobackup/users/weiliao/eicu_sepsis3.csv')
+        id_df = pd.read_csv(dir_csv[plf] + '/eicu_sepsis3.csv')
         sepsis3_id = id_df['patientunitstayid'].values # 1d array 
     index_dict = dict((value, idx) for idx, value in enumerate(ids))
     ind = [index_dict[x] for x in sepsis3_id if x in index_dict.keys()]
