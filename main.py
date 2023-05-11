@@ -83,13 +83,13 @@ if __name__ == "__main__":
     test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test',  args.sens_ind)
 
     if args.use_sepsis3 == True:
-        train_head, train_static, train_sofa, train_id = utils.filter_sepsis('mimic', train_head, train_static, train_sofa, train_id)
-        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis('mimic', dev_head, dev_static, dev_sofa, dev_id)
-        test_head, test_static, test_sofa, test_id = utils.filter_sepsis('mimic', test_head, test_static, test_sofa, test_id)
+        train_head, train_static, train_sofa, train_id = utils.filter_sepsis('mimic', train_head, train_static, train_sofa, train_id, args.platform)
+        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis('mimic', dev_head, dev_static, dev_sofa, dev_id, args.platform)
+        test_head, test_static, test_sofa, test_id = utils.filter_sepsis('mimic', test_head, test_static, test_sofa, test_id, args.platform)
 
     # build model
     model = models.Ffvae(args)
-    torch.save(model.state_dict(), dir_save[args.platform] + '/start_weights.pt')
+    torch.save(model.state_dict(), dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id)
 
     # 10-fold cross validation
     trainval_head = train_head + dev_head
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         # best_loss = 1e4
         # patience = 0
         if c_fold >= 1:
-            model.load_state_dict(torch.load(dir_save[args.platform] + '/start_weights.pt'))
+            model.load_state_dict(torch.load(dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id))
         print('Starting Fold %d' % c_fold)
         print("TRAIN:", len(train_index), "TEST:", len(test_index))
         train_head, val_head = utils.slice_data(trainval_head, train_index), utils.slice_data(trainval_head, test_index)
