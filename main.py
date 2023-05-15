@@ -128,6 +128,7 @@ if __name__ == "__main__":
         best_loss = 1e5
         best_clf_loss = 1e4 
         best_sofa_loss = 1e4
+        best_corr_loss = 1e4
         patience = 0
         for j in range(args.epochs):
             model.train()
@@ -183,10 +184,15 @@ if __name__ == "__main__":
             if average_meters.averages()['sofa_term/avg'] < best_sofa_loss: 
                 best_sofa_loss = average_meters.averages()['sofa_term/avg']
                 best_sofa_model = copy.deepcopy(model.state_dict())
-
+            
+            if abs(average_meters.averages()['corr_term/avg']) < best_corr_loss: 
+                best_corr_loss = abs(average_meters.averages()['corr_term/avg'])
+                best_corr_model =  copy.deepcopy(model.state_dict())
+                
         torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
 
         # save pd df, show plot, save plot
         plt.figure()
