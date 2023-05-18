@@ -2,6 +2,7 @@ import argparse
 import os 
 import copy 
 import pickle
+import timeit 
 import numpy as np
 import pandas as pd
 import torch
@@ -130,6 +131,8 @@ if __name__ == "__main__":
         best_sofa_loss = 1e4
         best_corr_loss = 1e4
         patience = 0
+        start_time = timeit.default_timer()
+        saved = False
         for j in range(args.epochs):
             model.train()
             average_meters = AverageMeterSet()
@@ -188,6 +191,28 @@ if __name__ == "__main__":
             if abs(average_meters.averages()['corr_term/avg']) < best_corr_loss: 
                 best_corr_loss = abs(average_meters.averages()['corr_term/avg'])
                 best_corr_model =  copy.deepcopy(model.state_dict())
+            
+            # save if code cannot be completely ran 
+            elapsed = timeit.default_timer() - start_time
+            # threshold 11:45 
+            if elapsed > 42300 and (not saved):
+                torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
+                torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
+                torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
+                torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
+                # save pd df, show plot, save plot
+                plt.figure()
+                axs = train_loss.plot(figsize=(12, 14), subplots=True)
+                plt.savefig(dir_save[args.platform] + '/checkpoints/' + workname + '/train_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+                plt.figure()
+                axs = dev_loss.plot(figsize=(12, 14), subplots=True)
+                plt.savefig(dir_save[args.platform] + '/checkpoints/' + workname + '/dev_loss_fold%d.eps'%c_fold, format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+                plt.show()
+                with open(os.path.join(dir_save[args.platform] + '/checkpoints/' + workname, 'train_loss_fold%d.pkl'%c_fold), 'wb') as f:
+                    pickle.dump(train_loss, f)
+                with open(os.path.join(dir_save[args.platform] + '/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
+                    pickle.dump(dev_loss, f)
+                saved = True
                 
         torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
