@@ -80,15 +80,15 @@ class RaceTrainSampler(Sampler):
 
                 # other is 0: asian and 2: hispanic
                 # print(data_buckets)
-                # print(len(self.label))
-            ind_black =  np.asarray([i for i in data_buckets[k] if self.label[i] == 1])
+#             print(self.label)
+            ind_black =  np.asarray([i for i in data_buckets[k] if self.label[i][2] == 1])
             num_black= len(ind_black)
 
             # ind_hispanic =  np.asarray([i for i in data_buckets[k] if self.label[i] == 2])
 
             # 2 is white, which needs to be downsampled 
             # 1 is white, which needs to be downsampled 
-            ind_neg =  [i for i in data_buckets[k] if self.label[i] == 0 ]
+            ind_neg =  [i for i in data_buckets[k] if self.label[i][2] == 0 ]
 
             num_neg = min(max(1, num_black), len(ind_neg)) # white
             # num_pos = min(max(1, num_asian), len(ind_pos)) # black
