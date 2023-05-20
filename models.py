@@ -236,7 +236,7 @@ class TemporalConvDec(nn.Module):
     
 class Ffvae(nn.Module):
     """Initializes FFVAE network: VAE encoder, MLP classifier, MLP discriminator"""
-    def __init__(self, args):
+    def __init__(self, args, weights):
         super(Ffvae, self).__init__()
 
         self.lr = args.lr
@@ -248,6 +248,7 @@ class Ffvae(nn.Module):
         self.device =  torch.device("cuda:%d"%args.device_id if torch.cuda.is_available() else "cpu")
         self.scale_elbo = args.scale_elbo
         self.batch_size = args.bs
+        self.weights = weights
 
         self.kernel_size = args.kernel_size
         self.drop_out = args.drop_out
@@ -396,7 +397,12 @@ class Ffvae(nn.Module):
             nn.BCEWithLogitsLoss()(_b_logit.to(self.device), _a_sens.to(self.device))
             for _b_logit, _a_sens in zip(
             b_squeeze.t(), attrs.type(torch.FloatTensor).t())]
-
+        # calcualte weighted clf 
+        clf_w_losses = [
+            nn.BCEWithLogitsLoss(pos_weight = self.weights[k][1]/self.weights[k][0])(_b_logit.to(self.device), _a_sens.to(self.device))
+            for k, (_b_logit, _a_sens) in enumerate(zip(
+            b_squeeze.t(), attrs.type(torch.FloatTensor).t()))]
+        
         # compute loss
         # (bs, T, 2)
         logits_joint, probs_joint = self.discriminator(zb.transpose(1, 2), "discriminator")
@@ -466,7 +472,7 @@ class Ffvae(nn.Module):
         sofap_loss = torch.mean(torch.stack(loss))
 
         cost_dict = dict(
-            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), sofa_term = torch.stack(sofa_loss).mean(), disc_cost=disc_loss, main_cost=sofap_loss
+            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), clf_w_term = torch.stack(clf_w_losses).mean(), sofa_term = torch.stack(sofa_loss).mean(), disc_cost=disc_loss, main_cost=sofap_loss
         )
 
         # ffvae optimization
