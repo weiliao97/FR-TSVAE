@@ -47,7 +47,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs")
     parser.add_argument("--patience", type=int, default=30, help="Patience epochs for early stopping.")
     # folder under checkpoints
-    parser.add_argument("--wn", type=str, default='0512_lr1e-4beta.001_res_regrtheta_5_mlp_regr_nonsens_sens21_mask', help="folder name")
+    parser.add_argument("--wn", type=str, default='0519_lr1e-4beta.001_res_regrtheta_1_mlp_regr_nonsens_sens0_mask_3sens', help="folder name")
     # mlp channels
     parser.add_argument("--mlp_params", nargs='+', type=int, help="number of channels in the mlp model for sensitive prediction")
     stage3_args = parser.parse_args()
@@ -88,8 +88,20 @@ if __name__ == "__main__":
         dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis('mimic', dev_head, dev_static, dev_sofa, dev_id, stage3_args.platform)
         test_head, test_static, test_sofa, test_id = utils.filter_sepsis('mimic', test_head, test_static, test_sofa, test_id, stage3_args.platform)
 
+    # prepare id_20 switch 34590507 to 32882608
+    stay_ids = [33013986, 37338822, 31972580, 35364108, 34994922, 
+                32087563, 36691371, 31438123, 33266445, 36424894, 
+                32613134, 38247671, 33280018, 33676100, 30932864, 
+                30525046, 33267162, 36431990, 31303162, 37216041]
+    idmap = {}
+    for i, ids in enumerate(test_id): 
+        idmap[ids] = i 
+    # convert id to index 
+    id_20 = []
+    for ids in stay_ids: 
+        id_20.append(idmap[ids])
     # build model
-    model = models.Ffvae(args)
+#     model = models.Ffvae(args)
     loss_fn = nn.CrossEntropyLoss()
 
     # 10-fold cross validation
@@ -139,7 +151,8 @@ if __name__ == "__main__":
                 total_dev_samples = len(val_static)
                 curr = torch.FloatTensor([ total_dev_samples / k / len(ctype) for k in count]).to(device)
                 weights_per_class.append(curr)
-            
+                
+            model = models.Ffvae(args, weights_per_class)
             model.load_state_dict(torch.load(p, map_location='cuda:%d'%stage3_args.device_id))
             print('load model from %s' % p)
 
@@ -215,7 +228,7 @@ if __name__ == "__main__":
                             for _z_logit, _a_sens in zip(
                             logits_m.t(), static.type(torch.FloatTensor).t())]
 
-                        eval_loss = torch.stack(train_losses).mean()
+                        eval_loss = torch.stack(eval_losses).mean()
                         # calcualte weighted clf 
                         eval_w_losses = [
                             nn.BCEWithLogitsLoss(pos_weight = weights_per_class[k][1]/weights_per_class[k][0])(_z_logit.to(device), _a_sens.to(device))
@@ -284,6 +297,145 @@ if __name__ == "__main__":
                     pickle.dump(dev_loss, f)
             break
         # start doing test on this pt file and save figures and results
+        stage3_pt = glob.glob(curr_dir + '/*.pt')
+        
+        for pt, pt_file in enumerate(stage3_pt): 
+            # load mlp model 
+            MLP_model.load_state_dict(torch.load(pt_file))
+            MLP_model.eval()
+            logits = []
+            stt = []
+            sofa_loss = []
+            with torch.no_grad():
+                for vitals, static, target, train_ids, key_mask in test_dataloader:
+                    # (bs, feature_dim, T)
+                    vitals = vitals.to(device)
+                    # (bs, 3)
+                    static = static.to(device)
+                    # (bs, T, 1)
+                    target = target.to(device)
+                    # (bs, T)
+                    key_mask = key_mask.to(device)
+
+                    # _mu shape [bs, zdim, T]
+                    latent_mu, _ = model.encoder(vitals)
+                    # (bs, T, 3)
+                    logits_z, probs = MLP_model(latent_mu[:, model.nonsens_idx, :].transpose(1, 2), mode='discriminator')
+                    # (bs, 3)
+                    logits.extend(torch.stack([logits_z[i][key_mask[i]==0].mean(dim=0) for i in range(len(logits_z))]))
+                    stt.extend(static)
+                    
+            logits = torch.stack(logits)
+            stt = torch.stack(stt) 
+            n_bootstraps = 1000
+            size_bstr = 3000
+            # AUC CM section needs enumeration 
+            for sens_i, sens_ind in enumerate([0, 1, 21]):
+                # display AUC 
+                metrics.RocCurveDisplay.from_predictions(stt[:, sens_i].cpu(),  nn.Sigmoid()(logits[:, sens_i]).cpu())  
+                fig = plt.gcf()
+                plt.show()
+                fig.savefig(curr_dir + '/pt_%d_auc_%d.eps'%(pt, sens_ind), format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+
+                # calculate optimal threshold
+                fpr, tpr, thresholds = metrics.roc_curve(stt[:, sens_i].cpu(),  nn.Sigmoid()(logits[:, sens_i]).cpu())
+                gmeans = np.sqrt(tpr * (1-fpr))
+                opt_th = thresholds[np.argmax(gmeans)]
+                all_auc = metrics.auc(fpr, tpr)
+
+                # AUC CI 
+                bootstrapped_aucs = []
+                for i in range(n_bootstraps):
+                    # bootstrap by sampling with replacement on the prediction indices
+                    indices = random.choices(range(len(stt)), k=1000)
+                    score = metrics.roc_auc_score(stt[:, sens_i].cpu()[indices], nn.Sigmoid()(logits[:, sens_i]).cpu()[indices])
+                    bootstrapped_aucs.append(score)
+                bootstrapped_aucs.sort()
+                # a 95% confidence interval
+                auc_ci_l = bootstrapped_aucs[int(0.025 * len(bootstrapped_aucs))]
+                auc_ci_h = bootstrapped_aucs[int(0.975 * len(bootstrapped_aucs))]
+                msg = 'auc %.5f, auc ci (%.5f - %.5f)'%(all_auc, auc_ci_l, auc_ci_h)
+                print(msg)
+
+                with open(curr_dir + '/pt_%d_auc_test_%d.json'%(pt, sens_ind), 'w') as f:
+                    json.dump(msg, f)
+
+                for th in [0.5, opt_th]:
+
+                    pred =  (nn.Sigmoid()(logits[:, sens_i]).cpu() > th).float()
+                    cm = metrics.confusion_matrix(stt[:, sens_i].cpu(), pred)
+                    cf_matrix = cm/np.repeat(np.expand_dims(np.sum(cm, axis=1), axis=-1), 2, axis=1)
+                    group_counts = ['{0:0.0f}'.format(value) for value in cm.flatten()]
+                    # percentage based on true label 
+                    gr = (cm/np.repeat(np.expand_dims(np.sum(cm, axis=1), axis=-1), 2, axis=1)).flatten()
+                    group_percentages = ['{0:.2%}'.format(value) for value in gr]
+
+                    labels = [f'{v1}\n{v2}' for v1, v2 in zip(group_percentages, group_counts)]
+
+                    labels = np.asarray(labels).reshape(2, 2)
+
+                    if sens_ind == 0:
+                        xlabel = ['Pred-%s'%l for l in ['F', 'M']]
+                        ylabel = ['%s'%l for l in ['F', 'M']]   
+                    elif sens_ind == 1: 
+                        xlabel = ['Pred-%s'%l for l in ['Y', 'E']]
+                        ylabel = ['%s'%l for l in ['Y', 'E']]   
+                    elif sens_ind == 21: 
+                        xlabel = ['Pred-%s'%l for l in ['W', 'B']]
+                        ylabel = ['%s'%l for l in ['W', 'B']]   
+
+                    sns.set(font_scale = 1.5)
+
+                    hm = sns.heatmap(cf_matrix, annot=labels, fmt='', cmap = 'OrRd', \
+                    annot_kws={"fontsize": 16}, xticklabels=xlabel, yticklabels=ylabel, cbar=False)
+                    # hm.set(title=title)
+                    fig = plt.gcf()
+                    plt.show()  
+                    fig.savefig(curr_dir + '/pt_%d_cm_%f_%d.eps'%(pt, th, sens_ind), format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+
+#             for v in ['raw', 'smooth']: 
+#                 fig, ax = plt.subplots(4, 5, figsize=(25, 12))
+#                 axes = ax.flatten()
+#                 for i in range(20):
+#                     id = test_id[id_20[i]]
+#                     sofa = mimic_target['test'][id]
+#                     _mu, _logvar = model.encoder(torch.FloatTensor(test_head[id_20[i]]).unsqueeze(0).to(device))
+#                     mu = _mu[:, model.nonsens_idx, :]
+#                     sofa_p = model.regr(mu.transpose(1, 2), "classify").squeeze(0).cpu().detach().numpy()*15
+#                     if v == 'smooth': 
+#                         sofa_p = [np.round(i) for i in sofa_p]
+#                     n = len(sofa)
+#                     axes[i].plot(range(len(sofa)), sofa, label='Current SOFA')
+#                     axes[i].plot(range(24, n), sofa_p, c="tab:green", label ='Predicted SOFA')
+#                     axes[i].set_xlim((0, len(sofa)))
+#                     axes[i].tick_params(axis='both', labelsize=8)
+#                     if max(sofa) <= 11 and int(max(sofa_p)) <=11:
+#                         axes[i].set_ylim((0, 13))
+#                     else: 
+#                         axes[i].set_ylim((0, max(max(sofa), int(max(sofa_p)))+2))
+#                     if i == 0: 
+#                         axes[i].set_ylabel('SOFA score', size=14,  fontweight='bold')
+#                     if i == 19:
+#                         axes[i].set_xlabel('ICU_in Hours', size=14,  fontweight='bold')
+#                     if i == 4:
+#                         axes[i].legend(loc='upper right',  prop=legend_properties)
+#                     # save each small figure 
+#                     fig_s, ax_s = plt.subplots(1, 1, figsize=(5, 3))
+#                     ax_s.plot(range(len(sofa)), sofa, label='Current SOFA')
+#                     ax_s.plot(range(24, n), sofa_p, c="tab:green", label ='Predicted SOFA')
+#                     ax_s.set_xlim((0, len(sofa)))
+#                     ax_s.tick_params(axis='both', labelsize=6)
+#                     if max(sofa) <= 11 and int(max(sofa_p)) <=11:
+#                         ax_s.set_ylim((0, 13))
+#                     else: 
+#                         ax_s.set_ylim((0, max(max(sofa), int(max(sofa_p)))+2))
+#                     ax_s.set_ylabel('SOFA score', size=12,  fontweight='bold')
+#                     ax_s.set_xlabel('ICU_in Hours', size=12,  fontweight='bold')
+#                     ax_s.legend(loc='upper right',  prop=legend_properties_s)
+#                     fig_s.savefig(curr_dir + '/indiv_sofa_%s_%d.eps'%(v, i), format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
+
+#                 # save the big figure 
+#                 fig.savefig(curr_dir + '/sofa_%.5f_%s.eps'%(test_loss, v), format='eps', bbox_inches = 'tight', pad_inches = 0.1, dpi=1200)
 
 
     #     torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + wn + '/stage3_fold_%d_epoch%d_loss%.5f.pt'%(c_fold, j,  np.mean(eval_loss)))
