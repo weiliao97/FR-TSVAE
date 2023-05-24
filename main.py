@@ -23,7 +23,7 @@ plt.rcParams["font.weight"] = "bold"
 plt.rcParams["axes.labelweight"] = "bold"
 legend_properties = {'weight':'bold', 'size': 14}
 dir_data = {'satori': '/nobackup/users/weiliao', 'colab':'/content/drive/MyDrive/ColabNotebooks/MIMIC/Extract/MEEP/Extracted_sep_2022/0910'}
-dir_save = {'satori': '/home/weiliao/FR-TSVAE', 'colab': 'content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE'}
+dir_save = {'satori': '/home/weiliao/FR-TSVAE', 'colab': '/content/drive/My Drive/ColabNotebooks/MIMIC/TCN/VAE'}
 
 
 if __name__ == "__main__":
