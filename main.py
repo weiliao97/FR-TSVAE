@@ -88,9 +88,7 @@ if __name__ == "__main__":
         dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis('mimic', dev_head, dev_static, dev_sofa, dev_id, args.platform)
         test_head, test_static, test_sofa, test_id = utils.filter_sepsis('mimic', test_head, test_static, test_sofa, test_id, args.platform)
 
-    # build model
-    model = models.Ffvae(args)
-    torch.save(model.state_dict(), dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id)
+
 
     # 10-fold cross validation
     trainval_head = train_head + dev_head
@@ -103,8 +101,7 @@ if __name__ == "__main__":
     for c_fold, (train_index, test_index) in enumerate(kf.split(trainval_head)):
         # best_loss = 1e4
         # patience = 0
-        if c_fold >= 1:
-            model.load_state_dict(torch.load(dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id))
+
         print('Starting Fold %d' % c_fold)
         print("TRAIN:", len(train_index), "TEST:", len(test_index))
         train_head, val_head = utils.slice_data(trainval_head, train_index), utils.slice_data(trainval_head, test_index)
@@ -122,12 +119,23 @@ if __name__ == "__main__":
                                                                                             train_id=train_id,
                                                                                             dev_id=val_id,
                                                                                             test_id=test_id)
+        ctype, count= np.unique(np.asarray(val_static), return_counts=True)
+        total_dev_samples = len(val_static)
+        weights_per_class = torch.FloatTensor([ total_dev_samples / k / len(ctype) for k in count]).to(device)
+        # build model
+        model = models.Ffvae(args, weights_per_class)
+        if c_fold == 0: 
+            torch.save(model.state_dict(), dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id)
+        else:
+            model.load_state_dict(torch.load(dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id))
+            
         # df to record loss
-        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
-        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
+        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
+        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e5
         best_clf_loss = 1e4 
+        best_clf_w_loss = 1e4 
         best_sofa_loss = 1e4
         best_corr_loss = 1e4
         patience = 0
@@ -184,6 +192,10 @@ if __name__ == "__main__":
                 best_clf_loss = average_meters.averages()['clf_term/avg']
                 best_clf_model = copy.deepcopy(model.state_dict())
                 
+            if average_meters.averages()['clf_w_term/avg'] < best_clf_w_loss: 
+                best_clf_w_loss = average_meters.averages()['clf_w_term/avg']
+                best_clf_w_model = copy.deepcopy(model.state_dict())
+                
             if average_meters.averages()['sofa_term/avg'] < best_sofa_loss: 
                 best_sofa_loss = average_meters.averages()['sofa_term/avg']
                 best_sofa_model = copy.deepcopy(model.state_dict())
@@ -198,6 +210,7 @@ if __name__ == "__main__":
             if elapsed > 42300 and (not saved):
                 torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
+                torch.save(best_clf_w_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clfw_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
                 # save pd df, show plot, save plot
@@ -216,6 +229,7 @@ if __name__ == "__main__":
                 
         torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_clf_w_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clfw_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
 
@@ -232,8 +246,8 @@ if __name__ == "__main__":
         with open(os.path.join(dir_save[args.platform] + '/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_loss, f)
 
-        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term',  'disc_cost', 'sofap_loss'])
-        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
+        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term',  'disc_cost', 'sofap_loss'])
+        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e4
         patience = 0
         # train from best clf model
