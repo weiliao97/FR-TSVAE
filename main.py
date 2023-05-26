@@ -31,6 +31,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parser for time series VAE models")
     parser.add_argument("--device_id", type=int, default=0, help="GPU id")
     parser.add_argument("--platform", type=str, default='colab', choices=['satori', 'colab'], help='Platform to run the code')
+    parser.add_argument("--database", type=str, default='mimic', choices=['mimic', 'eicu'], help='Database')
     # data/loss parameters
     parser.add_argument("--use_sepsis3", action = 'store_false', default= True, help="Whethe only use sepsis3 subset")
     parser.add_argument("--bucket_size", type=int, default=300, help="bucket size to group different length of time-series data")
@@ -69,24 +70,35 @@ if __name__ == "__main__":
     utils.creat_checkpoint_folder(dir_save[args.platform] + '/checkpoints/' + workname, 'params.json', arg_dict)
 
     # load data
-    meep_mimic = np.load(dir_data[args.platform] + '/MIMIC_compile_0911_2022.npy', \
-                    allow_pickle=True).item()
-    train_vital = meep_mimic ['train_head']
-    dev_vital = meep_mimic ['dev_head']
-    test_vital = meep_mimic ['test_head']
-    mimic_static = np.load(dir_data[args.platform] + '/MIMIC_static_0922_2022.npy', \
-                            allow_pickle=True).item()
-    mimic_target = np.load(dir_data[args.platform] + '/MIMIC_target_0922_2022.npy', \
-                            allow_pickle=True).item()
+    if args.database == 'mimic':
+        meep_mimic = np.load(dir_data[args.platform] + '/MIMIC_compile_0911_2022.npy', \
+                        allow_pickle=True).item()
+        train_vital = meep_mimic ['train_head']
+        dev_vital = meep_mimic ['dev_head']
+        test_vital = meep_mimic ['test_head']
+        mimic_static = np.load(dir_data[args.platform] + '/MIMIC_static_0922_2022.npy', \
+                                allow_pickle=True).item()
+        mimic_target = np.load(dir_data[args.platform] + '/MIMIC_target_0922_2022.npy', \
+                                allow_pickle=True).item()
+    else: 
+        meep_mimic = np.load(dir_data[args.platform] + '/eICU_compile_0911_2022_2.npy', \
+                        allow_pickle=True).item()
+        train_vital = meep_mimic ['train_head']
+        dev_vital = meep_mimic ['dev_head']
+        test_vital = meep_mimic ['test_head']
+        mimic_static = np.load(dir_data[args.platform] + '/eICU_static_0922_2022.npy', \
+                                allow_pickle=True).item()
+        mimic_target = np.load(dir_data[args.platform] + '/eICU_target_0922_2022.npy', \
+                                allow_pickle=True).item()
         
-    train_head, train_static, train_sofa, train_id =  utils.crop_data_target('mimic', train_vital, mimic_target, mimic_static, 'train', args.sens_ind)
-    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target('mimic', dev_vital , mimic_target, mimic_static, 'dev',  args.sens_ind)
-    test_head, test_static, test_sofa, test_id =  utils.crop_data_target('mimic', test_vital, mimic_target, mimic_static, 'test',  args.sens_ind)
+    train_head, train_static, train_sofa, train_id =  utils.crop_data_target(args.database, train_vital, mimic_target, mimic_static, 'train', args.sens_ind)
+    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target(args.database, dev_vital , mimic_target, mimic_static, 'dev',  args.sens_ind)
+    test_head, test_static, test_sofa, test_id =  utils.crop_data_target(args.database, test_vital, mimic_target, mimic_static, 'test',  args.sens_ind)
 
     if args.use_sepsis3 == True:
-        train_head, train_static, train_sofa, train_id = utils.filter_sepsis('mimic', train_head, train_static, train_sofa, train_id, args.platform)
-        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis('mimic', dev_head, dev_static, dev_sofa, dev_id, args.platform)
-        test_head, test_static, test_sofa, test_id = utils.filter_sepsis('mimic', test_head, test_static, test_sofa, test_id, args.platform)
+        train_head, train_static, train_sofa, train_id = utils.filter_sepsis(args.database, train_head, train_static, train_sofa, train_id, args.platform)
+        dev_head, dev_static, dev_sofa, dev_id = utils.filter_sepsis(args.database, dev_head, dev_static, dev_sofa, dev_id, args.platform)
+        test_head, test_static, test_sofa, test_id = utils.filter_sepsis(args.database, test_head, test_static, test_sofa, test_id, args.platform)
 
 
 
