@@ -32,6 +32,9 @@ if __name__ == "__main__":
     parser.add_argument("--device_id", type=int, default=0, help="GPU id")
     parser.add_argument("--platform", type=str, default='colab', choices=['satori', 'colab'], help='Platform to run the code')
     parser.add_argument("--database", type=str, default='mimic', choices=['mimic', 'eicu'], help='Database')
+    parser.add_argument("--retrain", action = 'store_true', default= False, help="Whethe retrain")
+    parser.add_argument("--retrain_pt", type=str, default = '0525_eicu_lr1e-4beta.001_res_regrtheta_5_mlp_regr_nonsens_sens0/stage1_clfw_fold_0_epoch29.pt')
+    
     # data/loss parameters
     parser.add_argument("--use_sepsis3", action = 'store_false', default= True, help="Whethe only use sepsis3 subset")
     parser.add_argument("--bucket_size", type=int, default=300, help="bucket size to group different length of time-series data")
@@ -136,8 +139,11 @@ if __name__ == "__main__":
         weights_per_class = torch.FloatTensor([ total_dev_samples / k / len(ctype) for k in count]).to(device)
         # build model
         model = models.Ffvae(args, weights_per_class)
-        if c_fold == 0: 
-            torch.save(model.state_dict(), dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id)
+        if c_fold == 0:
+            if args.retrain: 
+                model.load_state_dict(torch.load(dir_save[args.platform] + '/checkpoints/' + args.retrain_pt, map_location='cuda:%d'%args.device_id))
+            else:
+                torch.save(model.state_dict(), dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id)
         else:
             model.load_state_dict(torch.load(dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id))
             
@@ -218,8 +224,8 @@ if __name__ == "__main__":
             
             # save if code cannot be completely ran 
             elapsed = timeit.default_timer() - start_time
-            # threshold 11:45 
-            if elapsed > 42300 and (not saved):
+            # threshold 11:30 
+            if elapsed > 82800 and (not saved):
                 torch.save(best_model_state, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_clf_w_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clfw_fold_%d_epoch%d.pt'%(c_fold, j))
