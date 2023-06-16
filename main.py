@@ -60,11 +60,14 @@ if __name__ == "__main__":
     parser.add_argument("--regr_only_nonsens", action = 'store_true', help="Whether only using nonsens latents to predict sofa")
     # training parameters
     parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs")
-    parser.add_argument("--data_batching", type=str, default='close', choices=['same', 'close', 'random'], help='How to batch data')
+    parser.add_argument("--data_batching", type=str, default='same', choices=['same', 'close', 'random'], help='How to batch data')
     parser.add_argument("--bs", type=int, default=16, help="batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--patience", type=int, default=20, help="Patience epochs for early stopping.")
     parser.add_argument("--checkpoint", type=str, default='test', help=" name of checkpoint model")
+    # ihm 
+    parser.add_argument("--thresh", type=int, default=48, help="how many hours of data to use")
+    parser.add_argument("--gap", type=int, default=6, help="gap hours between record stop and data used in training")
 
     args = parser.parse_args()
     device = torch.device("cuda:%d"%args.device_id if torch.cuda.is_available() else "cpu")
@@ -94,9 +97,9 @@ if __name__ == "__main__":
         mimic_target = np.load(dir_data[args.platform] + '/eICU_target_0922_2022.npy', \
                                 allow_pickle=True).item()
         
-    train_head, train_static, train_sofa, train_id =  utils.crop_data_target(args.database, train_vital, mimic_target, mimic_static, 'train', args.sens_ind)
-    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target(args.database, dev_vital , mimic_target, mimic_static, 'dev',  args.sens_ind)
-    test_head, test_static, test_sofa, test_id =  utils.crop_data_target(args.database, test_vital, mimic_target, mimic_static, 'test',  args.sens_ind)
+    train_head, train_static, train_sofa, train_id =  utils.crop_data_target(args.database, train_vital, mimic_target, mimic_static, 'train', args.sens_ind, args.thresh, args.gap)
+    dev_head, dev_static, dev_sofa, dev_id =  utils.crop_data_target(args.database, dev_vital , mimic_target, mimic_static, 'dev',  args.sens_ind,  args.thresh, args.gap)
+    test_head, test_static, test_sofa, test_id =  utils.crop_data_target(args.database, test_vital, mimic_target, mimic_static, 'test',  args.sens_ind,  args.thresh, args.gap)
 
     if args.use_sepsis3 == True:
         train_head, train_static, train_sofa, train_id = utils.filter_sepsis(args.database, train_head, train_static, train_sofa, train_id, args.platform)
@@ -137,8 +140,12 @@ if __name__ == "__main__":
         ctype, count= np.unique(np.asarray(val_static), return_counts=True)
         total_dev_samples = len(val_static)
         weights_per_class = torch.FloatTensor([ total_dev_samples / k / len(ctype) for k in count]).to(device)
+        
+        ctype, count= np.unique(np.asarray(val_stail), return_counts=True)
+        total_dev_samples = len(val_stail)
+        weights_ihm = torch.FloatTensor([ total_dev_samples / k / len(ctype) for k in count]).to(device)
         # build model
-        model = models.Ffvae(args, weights_per_class)
+        model = models.Ffvae(args, weights_per_class, weights_ihm)
         if c_fold == 0:
             if args.retrain: 
                 model.load_state_dict(torch.load(dir_save[args.platform] + '/checkpoints/' + args.retrain_pt, map_location='cuda:%d'%args.device_id))
@@ -148,13 +155,14 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(dir_save[args.platform] + '/start_weights_%d.pt'%args.device_id))
             
         # df to record loss
-        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
-        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
+        train_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'sofaw_term', 'disc_cost', 'sofap_loss'])
+        dev_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'sofaw_term', 'disc_cost', 'sofap_loss'])
         # test_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e5
         best_clf_loss = 1e4 
         best_clf_w_loss = 1e4 
         best_sofa_loss = 1e4
+        best_sofaw_loss = 1e4
         best_corr_loss = 1e4
         patience = 0
         start_time = timeit.default_timer()
@@ -217,7 +225,11 @@ if __name__ == "__main__":
             if average_meters.averages()['sofa_term/avg'] < best_sofa_loss: 
                 best_sofa_loss = average_meters.averages()['sofa_term/avg']
                 best_sofa_model = copy.deepcopy(model.state_dict())
-            
+
+            if average_meters.averages()['sofaw_term/avg'] < best_sofaw_loss: 
+                best_sofaw_loss = average_meters.averages()['sofaw_term/avg']
+                best_sofaw_model = copy.deepcopy(model.state_dict())
+                
             if abs(average_meters.averages()['corr_term/avg']) < best_corr_loss: 
                 best_corr_loss = abs(average_meters.averages()['corr_term/avg'])
                 best_corr_model =  copy.deepcopy(model.state_dict())
@@ -230,6 +242,7 @@ if __name__ == "__main__":
                 torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_clf_w_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clfw_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
+                torch.save(best_sofaw_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofaw_fold_%d_epoch%d.pt'%(c_fold, j))
                 torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
                 # save pd df, show plot, save plot
                 plt.figure()
@@ -249,6 +262,7 @@ if __name__ == "__main__":
         torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_clf_w_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clfw_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_sofaw_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
 
         # save pd df, show plot, save plot
@@ -264,8 +278,8 @@ if __name__ == "__main__":
         with open(os.path.join(dir_save[args.platform] + '/checkpoints/' + workname, 'val_loss_fold%d.pkl'%c_fold), 'wb') as f:
             pickle.dump(dev_loss, f)
 
-        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term',  'disc_cost', 'sofap_loss'])
-        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'disc_cost', 'sofap_loss'])
+        train_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'sofaw_term',  'disc_cost', 'sofap_loss'])
+        dev_regr_loss = pd.DataFrame(columns=['ffvae_cost', 'recon_cost', 'kl_cost', 'corr_term', 'clf_term', 'clf_w_term', 'sofa_term', 'sofaw_term', 'disc_cost', 'sofap_loss'])
         best_loss = 1e4
         patience = 0
         # train from best clf model

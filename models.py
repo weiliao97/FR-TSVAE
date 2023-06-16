@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm
 mse_loss = nn.MSELoss()
+ce_loss = nn.CrossEntropyLoss()
 
 class MLP(nn.Module):
     def __init__(self, num_neurons, zdim, activ="leakyrelu"):
@@ -236,7 +237,7 @@ class TemporalConvDec(nn.Module):
     
 class Ffvae(nn.Module):
     """Initializes FFVAE network: VAE encoder, MLP classifier, MLP discriminator"""
-    def __init__(self, args, weights):
+    def __init__(self, args, weights, ihm_weights):
         super(Ffvae, self).__init__()
 
         self.lr = args.lr
@@ -249,6 +250,7 @@ class Ffvae(nn.Module):
         self.scale_elbo = args.scale_elbo
         self.batch_size = args.bs
         self.weights = weights
+        self.ihm_weights = ihm_weights
 
         self.kernel_size = args.kernel_size
         self.drop_out = args.drop_out
@@ -271,16 +273,17 @@ class Ffvae(nn.Module):
         # MLP Discriminator
         self.adv_neurons = [args.zdim] + [self.disc_channels] + [2]
         self.discriminator = MLP(self.adv_neurons, args.zdim).to(self.device)
-        self.class_neurons = ([args.zdim] + [200] + [1])
+        # both classifier and regr have output 2 
+        self.class_neurons = ([args.zdim] + [200] + [2])
             
         if self.regr_only_nonsens:
-            self.regr_neurons = ([args.zdim-1] + [200] + [1])
+            self.regr_neurons = ([args.zdim-1] + [200] + [2])
             self.regr = MLP(self.regr_neurons, args.zdim).to(self.device)
         else:
-            self.regr_neurons = ([args.zdim] + [200] + [1])
+            self.regr_neurons = ([args.zdim] + [200] + [2])
             self.regr = MLP(self.regr_neurons, args.zdim).to(self.device)
 
-        # MLP Classifier
+        # MLP Classifier # second step 
         if args.regr_model == 'mlp':
             
             self.classifier = MLP(self.class_neurons, args.zdim).to(self.device)
@@ -413,13 +416,16 @@ class Ffvae(nn.Module):
 #         torch.Size([bs])
         total_corr = torch.stack([(l[:, 0] - l[:, 1]).mean() for l in logits_recover])
         
-        # add sofa loss classifier has to be tune as well 
+        # deal with ihm prediction loss 
         if self.regr_only_nonsens:
+            # (bs, z_dim, T) -- > (bs, T, 2)
             sofa_p_s1 = self.regr(mu.transpose(1, 2), "classify")
         else:
             sofa_p_s1 = self.regr(_mu.transpose(1, 2), "classify")
-        sofa_loss = [mse_loss(sofa_p_s1[i][key_mask[i]==0], labels[i][key_mask[i]==0]) \
-            for i in range(len(sofa_p_s1))]
+        
+        # turn into 
+        sofa_loss = ce_loss(sofa_p_s1.mean(dim=1), labels.type(torch.cuda.LongTensor))
+        sofaw_loss = F.cross_entropy(sofa_p_s1.mean(dim=1), labels.type(torch.cuda.LongTensor), weight = self.ihm_weights)
 #         regr_loss = torch.mean(torch.stack(sofa_loss))
 
         # random elbo 10^4, totoal_corr 10^-1, clf_losses 10^-2
@@ -427,7 +433,7 @@ class Ffvae(nn.Module):
             - self.beta * elbo.mean()
             + self.gamma * total_corr.mean()
             + self.alpha * torch.stack(clf_losses).mean()
-            + self.theta * torch.stack(sofa_loss).mean()
+            + self.theta * sofa_loss
         )
 
         # shuffling minibatch indexes of b0, b1, z
@@ -460,17 +466,18 @@ class Ffvae(nn.Module):
 
         # torch.Size([bs, T, 1])
         if self.regr_model == 'mlp':
+            # (bs, 20, 48) --> (bs, 48, 20) --> (bs, 48, 2)
             sofa_p = self.classifier(encoded_x.transpose(1, 2), "classify")
         elif self.regr_model == 'tcn':
             # encoder x (bs, z_dim, T) 
             sofa_p =  self.classifier(encoded_x)
             
-        loss = [mse_loss(sofa_p[i][key_mask[i]==0], labels[i][key_mask[i]==0]) \
-            for i in range(len(sofa_p))]
-        sofap_loss = torch.mean(torch.stack(loss))
-
+#         loss = [ce_loss(sofa_p[i][key_mask[i]==0], labels[i][key_mask[i]==0]) \
+#             for i in range(len(sofa_p))]
+        sofap_loss = ce_loss(sofa_p.mean(dim=1), labels.type(torch.cuda.LongTensor))
+    
         cost_dict = dict(
-            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), clf_w_term = torch.stack(clf_w_losses).mean(), sofa_term = torch.stack(sofa_loss).mean(), disc_cost=disc_loss, main_cost=sofap_loss
+            ffvae_cost=ffvae_loss, recon_cost=recon_term.mean(), kl_cost=kl.mean(), corr_term=total_corr.mean(), clf_term = torch.stack(clf_losses).mean(), clf_w_term = torch.stack(clf_w_losses).mean(), sofa_term = sofa_loss, sofaw_term = sofaw_loss, disc_cost=disc_loss, main_cost=sofap_loss
         )
 
         # ffvae optimization

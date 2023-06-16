@@ -1,5 +1,5 @@
 import torch.utils.data as data
-from torch.utils.data import Sampler
+from torch.utils.data import Sampler, WeightedRandomSampler
 import torch 
 import random 
 import numpy as np 
@@ -309,9 +309,10 @@ def col_fn(batchdata):
     # [(200, 48) ---> (200, 100)]
     padded_td = [np.pad(batchdata[i][0], pad_width=((0, 0), (0, max_len-batchdata[i][0].shape[-1])), \
                 mode='constant', constant_values=-3) for i in range(len_data)]
-    # [(48, 1) ---> (100, 1)]
-    padded_label = [np.pad(batchdata[i][2], pad_width=((0, max_len-batchdata[i][0].shape[-1]), (0, 0)), \
-                mode='constant', constant_values=0) for i in range(len_data)]
+#     # [(48, 1) ---> (100, 1)]
+#     padded_label = [np.pad(batchdata[i][2], pad_width=((0, max_len-batchdata[i][0].shape[-1]), (0, 0)), \
+#                 mode='constant', constant_values=0) for i in range(len_data)]
+    label =  [batchdata[i][2] for i in range(len_data)]
     static = [batchdata[i][1] for i in range(len_data)]
     stayids = [batchdata[i][3] for i in range(len_data)]
     
@@ -319,7 +320,7 @@ def col_fn(batchdata):
     mask = [np.pad(len_tem[i], pad_width=((0, max_len-batchdata[i][0].shape[-1])), \
             mode='constant', constant_values=1) for i in range(len_data)]
         
-    return torch.from_numpy(np.stack(padded_td)), torch.from_numpy(np.stack(static)), torch.from_numpy(np.asarray(padded_label)), torch.from_numpy(np.asarray(stayids)), torch.from_numpy(np.stack(mask))
+    return torch.from_numpy(np.stack(padded_td)), torch.from_numpy(np.stack(static)), torch.from_numpy(np.stack(label)), torch.from_numpy(np.asarray(stayids)), torch.from_numpy(np.stack(mask))
 
 def generate_buckets(bs, train_hist):
     """
@@ -373,34 +374,60 @@ def get_data_loader(args, train_head, dev_head, test_head,
 
     if args.data_batching == 'random':
 
-        train_dataloader = data.DataLoader(train_dataset, batch_size=args.bs, collate_fn=col_fn,
-                                drop_last=False, pin_memory=False)  
-        dev_dataloader = data.DataLoader(val_dataset, batch_size=args.bs, collate_fn=col_fn,
-                                drop_last=False, pin_memory=False) 
-        test_dataloader = data.DataLoader(test_dataset, batch_size=args.bs, collate_fn=col_fn,
-                                drop_last=False, pin_memory=False) 
+#          if args.sens_ind == 1:
+#             # ne need to resample if using age as a target
+#             sampler = EvalSampler(train_head, train_static, bucket_boundaries, batch_sizes)
+#         elif args.sens_ind == 21:
+#             # if race as the target 
+#             print(len(train_head))
+#             sampler = RaceTrainSampler(args, train_head, train_static, bucket_boundaries, batch_sizes)
+#         else:
+        sampler = TrainSampler(train_head, train_static, bucket_boundaries, batch_sizes)
+
+        dev_sampler = EvalSampler(dev_head, dev_static, bucket_boundaries, val_batch_sizes)
+        test_sampler = EvalSampler(test_head, test_static, bucket_boundaries, test_batch_sizes)
+
+        train_dataloader = data.DataLoader(train_dataset, batch_size=1, collate_fn=col_fn,
+                                batch_sampler=sampler, 
+                                drop_last=False, pin_memory=False)
+        dev_dataloader = data.DataLoader(val_dataset, batch_size=1, collate_fn=col_fn,
+                                batch_sampler=dev_sampler, 
+                                drop_last=False, pin_memory=False)
+        test_dataloader = data.DataLoader(test_dataset, batch_size=1, collate_fn=col_fn,
+                                batch_sampler=test_sampler, 
+                                drop_last=False, pin_memory=False)
         
     elif args.data_batching == 'same':
         # same means each batch has the same length of time-series data, which constrains the batch size
-        batch_sizes=6
-        val_batch_sizes = 1
-        test_batch_sizes = 1
+        batch_sizes= args.bs
+        val_batch_sizes = args.bs
+        test_batch_sizes = args.bs
+        # batch_sizes could be class 'numpy.int64'
+        if not isinstance(batch_sizes, int):
+            batch_sizes = batch_sizes.item()
+            val_batch_sizes = val_batch_sizes.item()
+            test_batch_sizes = test_batch_sizes.item()
 
-        bucket_boundaries = [i for i in range(1, 219)]
-        val_bucket_boundaries = [i for i in range(len(val_hist)) if val_hist[i]>0 ] + [219]
 
-        sampler = BySequenceLengthSampler(train_head, bucket_boundaries, batch_sizes)
-        dev_sampler = BySequenceLengthSampler(dev_head, val_bucket_boundaries, val_batch_sizes)
-        test_sampler = BySequenceLengthSampler(test_head, bucket_boundaries, test_batch_sizes)
-
-        train_dataloader = data.DataLoader(train_dataset, batch_size=1, 
-                                batch_sampler=sampler, collate_fn=col_fn,
-                             drop_last=False, pin_memory=False)
-        dev_dataloader = data.DataLoader(val_dataset, batch_size=1, 
-                                batch_sampler=dev_sampler, collate_fn=col_fn,
+        # bucket_boundaries = [i for i in range(1, 218)]
+        # val_bucket_boundaries = [k for k in bucket_boundaries if k not in [129, 168, 188, 201,206]]
+        ctype, count= np.unique(train_sofa_tail, return_counts=True)
+        total_samples = len(train_sofa_tail)
+        weights_per_class = [total_samples / k / len(ctype) for k in count]
+        weights = [weights_per_class[int(train_sofa_tail[i])] for i in range(int(total_samples))]
+        sampler = WeightedRandomSampler(torch.DoubleTensor(weights), int(total_samples))
+        # sampler = BalancedSampler(train_sofa_tail, batch_sizes)
+        # dev_sampler = EvalSampler(dev_head, val_bucket_boundaries, val_batch_sizes)
+        # test_sampler = EvalSampler(test_head, bucket_boundaries, test_batch_sizes)
+        train_dataloader = data.DataLoader(train_dataset, batch_size=batch_sizes, 
+                                sampler = sampler, collate_fn=col_fn,
                                 drop_last=False, pin_memory=False)
-        test_dataloader = data.DataLoader(test_dataset, batch_size=1, 
-                                batch_sampler=test_sampler, collate_fn=col_fn,
+
+        dev_dataloader = data.DataLoader(val_dataset, batch_size=val_batch_sizes, 
+                                collate_fn=col_fn,
+                                drop_last=False, pin_memory=False)
+        test_dataloader = data.DataLoader(test_dataset, batch_size=test_batch_sizes, 
+                                 collate_fn=col_fn,
                                 drop_last=False, pin_memory=False)
 
     elif args.data_batching == 'close':

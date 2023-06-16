@@ -77,7 +77,7 @@ def creat_checkpoint_folder(target_path, target_file, data):
     with open(os.path.join(target_path, target_file), 'w') as f:
         json.dump(data, f)
 
-def crop_data_target(database, vital, target_dict, static_dict, mode, target_index):
+def crop_data_target(database, vital, target_dict, static_dict, mode, target_index, thresh, gap):
     '''
     vital: a list of nd array [[200, 81], [200, 93], ...] 
     target_dict: dict of SOFA score: {'train': {30015933: [81, 1], 30016009: [79, 1], ...}, 'dev': }
@@ -93,19 +93,22 @@ def crop_data_target(database, vital, target_dict, static_dict, mode, target_ind
        'ethnicity_HISPANIC/LATINO', 'ethnicity_OTHER', 'ethnicity_WHITE'
     return:
     train_filter: [ndarray with shape (200, 8),...
-    sofa_tail: [ndarray with shape (8, 1),
+    sofa_tail: [0, 0, 0, 0, 1]
     stayids: [39412629, 37943756, 32581623, 37929132,
     train_target: [0, 0, 1, 0, 0, 1]
     '''
     idx = pd.IndexSlice
+    static_key = 'static_' + mode
     length = [i.shape[-1] for i in vital]
     all_train_id = list(target_dict[mode].keys())
-    stayids = [all_train_id[i] for i, m in enumerate(length) if m >24]
-    sofa_tail = [target_dict[mode][j][24:]/15 for j in stayids]
-    static_key = 'static_' + mode
+    stayids = [all_train_id[i] for i, m in enumerate(length) if m >= thresh + gap]
+    # in eicu, ihm could be null, [0, 1, 0, 0, 0, ]
+    sofa_tail = [static_dict[static_key].loc[idx[:, :, j]].iloc[:, 2].values.item() for j in stayids]
+    
 
     if database == 'mimic':
-        train_filter = [vital[i][:, :-24] for i, m in enumerate(length) if m >24]
+        train_filter = [vital[i][:, :thresh] for i, m in enumerate(length) if m >=thresh+gap]
+
         if target_index == 21: # race: 2 is balck, 5 is white 
             # shape [1,6] then use nonzero, after e.g.array([5])
             train_target = [np.nonzero(static_dict[static_key].loc[idx[:, :, j]].iloc[:, 21:].values)[1] for j in stayids]
