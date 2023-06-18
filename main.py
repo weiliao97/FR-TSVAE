@@ -262,8 +262,9 @@ if __name__ == "__main__":
         torch.save(best_clf_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clf_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_clf_w_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_clfw_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_sofa_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
-        torch.save(best_sofaw_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofa_fold_%d_epoch%d.pt'%(c_fold, j))
+        torch.save(best_sofaw_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_sofaw_fold_%d_epoch%d.pt'%(c_fold, j))
         torch.save(best_corr_model, dir_save[args.platform] + '/checkpoints/' + workname + '/stage1_corr_fold_%d_epoch%d.pt'%(c_fold, j))
+        saved = True
 
         # save pd df, show plot, save plot
         plt.figure()
