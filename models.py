@@ -123,7 +123,7 @@ class TCN(nn.Module):
     
     
 class TemporalConv(nn.Module):
-    def __init__(self, num_inputs, num_channels=[256, 128, 64, 40], kernel_size=2, dropout=0.2):
+    def __init__(self, num_inputs, num_channels=[256, 128, 64, 40], kernel_size=2, dropout=0.2, zdim=20):
         super(TemporalConv, self).__init__()
         layers = []
         num_levels = len(num_channels)
@@ -135,7 +135,7 @@ class TemporalConv(nn.Module):
                                      padding=(kernel_size-1) * dilation_size, dropout=dropout)]
 
         self.network = nn.Sequential(*layers)
-        self.linear = nn.Linear(num_channels[-1]*48, 40)
+        self.linear = nn.Linear(num_channels[-1]*48, zdim*2)
         # nn.ReLU(),
         # nn.Dropout(0.2),
         # nn.Linear(128, 128),
@@ -201,7 +201,7 @@ class TemporalBlockDec(nn.Module):
 
 
 class TemporalConvDec(nn.Module):
-    def __init__(self, num_inputs, num_channels=[64, 128, 256, 200], kernel_size=2, dropout=0.2):
+    def __init__(self, num_inputs, num_channels=[64, 128, 256, 200], kernel_size=2, dropout=0.2, zdim=20):
         super(TemporalConvDec, self).__init__()
         layers = []
         num_levels = len(num_channels)
@@ -213,7 +213,7 @@ class TemporalConvDec(nn.Module):
                                      padding=(kernel_size-1) * dilation_size, dropout=dropout)]
 
         self.network = nn.Sequential(*layers)
-        self.linear = nn.Linear(20, 48*2)
+        self.linear = nn.Linear(zdim, 48*2)
         # nn.ReLU(),
         # nn.Dropout(0.2),
         # nn.Linear(128, 128),
@@ -265,8 +265,8 @@ class Ffvae(nn.Module):
         
         # VAE encoder
 
-        self.encoder  = TemporalConv(num_inputs=self.num_inputs, num_channels=self.enc_channels, kernel_size=self.kernel_size, dropout=self.drop_out)
-        self.decoder = TemporalConvDec(num_inputs=self.zdim, num_channels=self.dec_channels, kernel_size=self.kernel_size, dropout=self.drop_out)
+        self.encoder  = TemporalConv(num_inputs=self.num_inputs, num_channels=self.enc_channels, kernel_size=self.kernel_size, dropout=self.drop_out, zdim=self.zdim)
+        self.decoder = TemporalConvDec(num_inputs=self.zdim, num_channels=self.dec_channels, kernel_size=self.kernel_size, dropout=self.drop_out, zdim=self.zdim)
 
         self.encoder.to(self.device)
         self.decoder.to(self.device)
@@ -397,13 +397,15 @@ class Ffvae(nn.Module):
         # b logits shape torch.Size([bs, 1]), converts to [bs] based on real length 
 #         b_squeeze = torch.stack([b_logits[i].squeeze(0)[key_mask[i]==0].mean() for i in range(len(b_logits))])
         clf_losses = [
-            nn.BCEWithLogitsLoss()(b_logits.to(self.device), attrs.type(torch.FloatTensor).to(self.device))]
+            nn.BCEWithLogitsLoss()(_b_logit.to(self.device), _a_sens.to(self.device))
+            for _b_logit, _a_sens in zip(
+            b_logits.squeeze(-1).t(), attrs.type(torch.FloatTensor).t())]
         
         # weighted 
         clf_w_losses = [
             nn.BCEWithLogitsLoss(pos_weight = self.weights[1]/self.weights[0])(_b_logit.to(self.device), _a_sens.to(self.device))
             for _b_logit, _a_sens in zip(
-            b_logits.squeeze().t(), attrs.type(torch.FloatTensor).t())]
+            b_logits.squeeze(-1).t(), attrs.type(torch.FloatTensor).t())]
 
         # compute loss
         # (bs, z_dim) --> (bs, 2)
